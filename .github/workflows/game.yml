@@ -35,6 +35,45 @@ jobs:
           export LD_LIBRARY_PATH="$(dirname "$LIBPAWNC"):${LD_LIBRARY_PATH:-}"
           "./$(basename "$COMPILER")" "$GITHUB_WORKSPACE/Игра/gamemodes/veltor.pwn" "-i$(dirname "$INCLUDE")" "-i$GITHUB_WORKSPACE/Игра/include" "-o$GITHUB_WORKSPACE/.ci/out/veltor.amx" -Z
           test -s "$GITHUB_WORKSPACE/.ci/out/veltor.amx"
+      - name: Download pinned Linux bcrypt plugin
+        run: |
+          mkdir -p .ci/bcrypt
+          curl -fL --retry 3 -o .ci/bcrypt.zip https://github.com/Sreyas-Sreelal/samp-bcrypt/releases/download/0.4.1/samp-bcrypt-linux-x86.zip
+          unzip -oq .ci/bcrypt.zip -d .ci/bcrypt
+          find .ci/bcrypt -type f
+          test -n "$(find .ci/bcrypt -type f -name '*bcrypt*.so' -print -quit)"
+      - name: Local server boot smoke test
+        run: |
+          set -euo pipefail
+          EXE="$(find "$PWD/.ci/server" -type f -name omp-server | head -n 1)"
+          PLUGIN="$(find "$PWD/.ci/bcrypt" -type f -name '*bcrypt*.so' | head -n 1)"
+          test -n "$EXE" && test -n "$PLUGIN"
+          ROOT="$(dirname "$EXE")"
+          mkdir -p "$ROOT/plugins" "$ROOT/gamemodes" "$ROOT/scriptfiles"
+          cp "$PLUGIN" "$ROOT/plugins/samp_bcrypt.so"
+          cp .ci/out/veltor.amx "$ROOT/gamemodes/veltor.amx"
+          python3 - "$ROOT/config.json" <<'PY'
+          import json,sys
+          config={
+              "name":"VELTOR ROLEPLAY | CI TEST",
+              "language":"Russian",
+              "announce":False,
+              "max_players":5,
+              "network":{"bind":"127.0.0.1","port":7788},
+              "pawn":{"main_scripts":["veltor 1"],"side_scripts":[],"legacy_plugins":["samp_bcrypt"]},
+              "rcon":{"enable":False}
+          }
+          with open(sys.argv[1],"w",encoding="utf-8") as fh:
+              json.dump(config,fh)
+          PY
+          chmod +x "$EXE"
+          set +e
+          (cd "$ROOT" && timeout 10s ./omp-server) > .ci/server-boot.log 2>&1
+          rc=$?
+          set -e
+          cat .ci/server-boot.log
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then exit "$rc"; fi
+          grep -F "[VELTOR] Clean SQLite account system ready" .ci/server-boot.log
       - name: Upload compiled gamemode
         uses: actions/upload-artifact@v4
         with:
