@@ -14,6 +14,7 @@
 <p>
   <a href="https://github.com/Zeihos/Veltor-RP/actions/workflows/php.yml"><img src="https://github.com/Zeihos/Veltor-RP/actions/workflows/php.yml/badge.svg?branch=main" alt="Проверки сайта и форума"></a>
   <a href="https://github.com/Zeihos/Veltor-RP/actions/workflows/game.yml"><img src="https://github.com/Zeihos/Veltor-RP/actions/workflows/game.yml/badge.svg?branch=develop%2Fgameplay-mvp" alt="Сборка игрового мода"></a>
+  <a href="https://github.com/Zeihos/Veltor-RP/actions/workflows/web-packages.yml"><img src="https://github.com/Zeihos/Veltor-RP/actions/workflows/web-packages.yml/badge.svg?branch=main" alt="Установочные архивы"></a>
   <img src="https://img.shields.io/badge/%D1%81%D1%82%D0%B0%D1%82%D1%83%D1%81-%D0%B2%20%D1%80%D0%B0%D0%B7%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%BA%D0%B5-F59E0B?style=flat-square" alt="В разработке">
 </p>
 
@@ -85,6 +86,8 @@
 
 ### Сайт и форум
 
+**[Скачать проверенные ZIP-архивы сайта и форума →](./docs/DOWNLOADS.md)** — сборка создаётся автоматически в [GitHub Actions](https://github.com/Zeihos/Veltor-RP/actions/workflows/web-packages.yml). В пакетах только установочные файлы; базы пользователей и временные данные в них не включены.
+
 Для обоих приложений нужен **PHP 8.1+**; MySQL не требуется. Каждое приложение хранит данные отдельно.
 
 ```bash
@@ -111,6 +114,7 @@ php -S 127.0.0.1:8001 -t 'Форум' tools/dev-router.php
 |:--|:--|
 | [Архитектура](./docs/ARCHITECTURE.md) | Компоненты, хранение данных и разделение ответственности |
 | [Установка](./docs/DEPLOYMENT.md) | PHP-хостинг, конфигурация, HTTPS и защита данных |
+| [Готовые архивы](./docs/DOWNLOADS.md) | Проверенные ZIP сайта и форума из GitHub Actions |
 | [Тестирование](./docs/TESTING.md) | Локальные команды и GitHub Actions |
 | [План разработки](./docs/ROADMAP.md) | Завершённые этапы и предстоящая работа |
 | [История изменений](./CHANGELOG.md) | Основные технические изменения |
