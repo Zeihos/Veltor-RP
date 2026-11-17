@@ -12,7 +12,7 @@
 #define START_Y -1745.80
 #define START_Z 13.55
 #define CAR_PRICE 15000
-#define WORK_DELAY 60000
+#define WORK_DELAY 60
 
 new DB:gDb;
 new bool:gAuthed[MAX_PLAYERS];
@@ -25,6 +25,34 @@ new gAttempts[MAX_PLAYERS];
 new gSalt[MAX_PLAYERS][33];
 new gPasswordHash[MAX_PLAYERS][65];
 new gPlayerName[MAX_PLAYERS][MAX_PLAYER_NAME + 1];
+
+stock bool:DigitsOnly(const value[])
+{
+    new len=strlen(value);
+    if(len<1 || len>10)return false;
+    for(new i=0; i<len; i++)if(value[i]<'0' || value[i]>'9')return false;
+    return true;
+}
+stock LoadWorkCooldown(playerid)
+{
+    new sql[180];
+    format(sql,sizeof sql,"SELECT last_work FROM work_cooldown WHERE name='%s' LIMIT 1",gPlayerName[playerid]);
+    new DBResult:r=db_query(gDb,sql);
+    if(r)
+    {
+        if(db_num_rows(r)>0)gLastWork[playerid]=db_get_field_assoc_int(r,"last_work");
+        db_free_result(r);
+    }
+    return 1;
+}
+stock SaveWorkCooldown(playerid)
+{
+    new sql[180];
+    format(sql,sizeof sql,"INSERT OR REPLACE INTO work_cooldown(name,last_work) VALUES('%s',%d)",gPlayerName[playerid],gLastWork[playerid]);
+    new DBResult:r=db_query(gDb,sql);
+    if(r)db_free_result(r);
+    return 1;
+}
 
 main() { print("VELTOR ROLEPLAY test gamemode loaded"); }
 
@@ -107,6 +135,13 @@ stock ShowAuth(playerid)
 
 stock FinishAuth(playerid)
 {
+    for(new i=0;i<MAX_PLAYERS;i++)if(i!=playerid && gAuthed[i] && !strcmp(gPlayerName[i],gPlayerName[playerid],true))
+    {
+        SendClientMessage(playerid,C_RED,"Account is already online.");
+        Kick(playerid);
+        return 0;
+    }
+    LoadWorkCooldown(playerid);
     gAuthed[playerid] = true;
     SetSpawnInfo(playerid, NO_TEAM, 60, START_X, START_Y, START_Z, 90.0, 0, 0, 0, 0, 0, 0);
     SpawnPlayer(playerid);
@@ -137,6 +172,14 @@ public OnGameModeInit()
     if (!r)
     {
         print("[VELTOR] Cannot initialize accounts table");
+        db_close(gDb);
+        return 0;
+    }
+    db_free_result(r);
+    r=db_query(gDb,"CREATE TABLE IF NOT EXISTS work_cooldown (name TEXT PRIMARY KEY COLLATE NOCASE, last_work INTEGER NOT NULL DEFAULT 0)");
+    if(!r)
+    {
+        print("[VELTOR] Cannot initialize work cooldown table");
         db_close(gDb);
         return 0;
     }
@@ -312,13 +355,14 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (!strcmp(cmdtext, "/work", true))
     {
         if (!gJob[playerid]) { SendClientMessage(playerid, C_RED, "Select a job using /job 1, 2 or 3."); return 1; }
-        if (gLastWork[playerid] != 0 && GetTickCount() - gLastWork[playerid] < WORK_DELAY)
+        if (gLastWork[playerid] != 0 && gettime() - gLastWork[playerid] < WORK_DELAY)
         {
             SendClientMessage(playerid, C_RED, "You must wait before your next shift.");
             return 1;
         }
         if (gMoney[playerid] > 99999000) { SendClientMessage(playerid, C_RED, "Cash limit reached."); return 1; }
-        gLastWork[playerid] = GetTickCount();
+        gLastWork[playerid] = gettime();
+        SaveWorkCooldown(playerid);
         SetCash(playerid, gMoney[playerid] + 350 + gJob[playerid] * 50);
         SaveUser(playerid);
         SendClientMessage(playerid, C_GREEN, "Work complete! Salary added to your account.");
@@ -359,9 +403,14 @@ public OnPlayerCommandText(playerid, cmdtext[])
         new idText[12], amountText[20];
         strmid(idText, arg, 0, s, sizeof idText);
         strmid(amountText, arg, s + 1, strlen(arg), sizeof amountText);
+        if (!DigitsOnly(idText) || !DigitsOnly(amountText) || strlen(idText)>5 || strlen(amountText)>6)
+        {
+            SendClientMessage(playerid, C_RED, "Invalid player ID or amount.");
+            return 1;
+        }
         new target = strval(idText), amount = strval(amountText);
-        if (!IsPlayerConnected(target) || !gAuthed[target] || target == playerid ||
-            amount < 1 || amount > 50000 || amount > gMoney[playerid] || gMoney[target] > 99900000)
+        if (target<0 || target>=MAX_PLAYERS || !IsPlayerConnected(target) || !gAuthed[target] || target == playerid ||
+            amount < 1 || amount > 50000 || amount > gMoney[playerid] || gMoney[target] > 100000000 - amount)
         {
             SendClientMessage(playerid, C_RED, "Invalid recipient or amount (maximum $50000).");
             return 1;
