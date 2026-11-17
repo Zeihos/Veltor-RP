@@ -1,0 +1,54 @@
+name: Веб-сборки
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Сайт/**'
+      - 'Форум/**'
+      - 'tests/**'
+      - 'tools/**'
+      - '.github/workflows/web-packages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверить структуру репозитория
+        run: python3 tools/repo-health.py
+
+      - name: Проверить синтаксис PHP
+        run: find 'Сайт' 'Форум' -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Проверить базовые функции
+        run: |
+          php tests/site-core.php
+          php tests/forum-core.php
+          bash tools/http-smoke.sh
+
+      - name: Собрать и проверить архивы
+        run: |
+          python3 tools/build-web-packages.py --output .dist
+          python3 tools/build-web-packages.py --output .dist --verify-only
+          (
+            cd .dist
+            sha256sum VELTOR-SITE.zip VELTOR-FORUM.zip > SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )
+
+      - name: Опубликовать установочные файлы
+        uses: actions/upload-artifact@v4
+        with:
+          name: VELTOR-WEB-INSTALLERS
+          path: |
+            .dist/VELTOR-SITE.zip
+            .dist/VELTOR-FORUM.zip
+            .dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
