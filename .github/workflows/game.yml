@@ -30,5 +30,6 @@ jobs:
           chmod +x "$COMPILER"
           mkdir -p "$PWD/.ci/out"
           cd "$(dirname "$COMPILER")"
+          export LD_LIBRARY_PATH="$(pwd):${LD_LIBRARY_PATH:-}"
           "./$(basename "$COMPILER")" "$GITHUB_WORKSPACE/Игра/gamemodes/veltor.pwn" "-i$(dirname "$INCLUDE")" "-o$GITHUB_WORKSPACE/.ci/out/veltor.amx" -Z
           test -s "$GITHUB_WORKSPACE/.ci/out/veltor.amx"
