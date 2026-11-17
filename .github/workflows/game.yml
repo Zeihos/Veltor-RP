@@ -33,7 +33,7 @@ jobs:
           LIBPAWNC="$(find "$GITHUB_WORKSPACE/.ci/compiler" -type f -name 'libpawnc.so*' | head -n 1)"
           test -n "$LIBPAWNC"
           export LD_LIBRARY_PATH="$(dirname "$LIBPAWNC"):${LD_LIBRARY_PATH:-}"
-          "./$(basename "$COMPILER")" "$GITHUB_WORKSPACE/Игра/gamemodes/veltor.pwn" "-i$(dirname "$INCLUDE")" "-o$GITHUB_WORKSPACE/.ci/out/veltor.amx" -Z
+          "./$(basename "$COMPILER")" "$GITHUB_WORKSPACE/Игра/gamemodes/veltor.pwn" "-i$(dirname "$INCLUDE")" "-i$GITHUB_WORKSPACE/Игра/include" "-o$GITHUB_WORKSPACE/.ci/out/veltor.amx" -Z
           test -s "$GITHUB_WORKSPACE/.ci/out/veltor.amx"
       - name: Upload compiled gamemode
         uses: actions/upload-artifact@v4
