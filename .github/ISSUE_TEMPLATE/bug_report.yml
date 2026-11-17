@@ -1,0 +1,59 @@
+name: "🐞 Сообщить об ошибке"
+description: "Для ошибок сайта, форума, игрового мода или установщика"
+title: "[Ошибка] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за сообщение! Перед публикацией **удалите пароли, токены, адреса частных серверов и персональные данные**.
+        Если это уязвимость безопасности — используйте [политику безопасности](https://github.com/Zeihos/Veltor-RP/blob/main/SECURITY.md), а не публичный issue.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Где возникла ошибка?
+      options:
+        - Сайт
+        - Форум
+        - Игровой мод
+        - Установка и сборка
+        - Документация и оформление
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Что произошло?
+      description: "Опишите фактическое поведение"
+      placeholder: "Например: после отправки формы появляется сообщение об ошибке…"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Как должно работать?
+      placeholder: "Ожидаемое поведение"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как повторить?
+      description: "Нумерованные шаги; без личных данных"
+      placeholder: |
+        1. Открыть страницу…
+        2. Нажать…
+        3. Получить ошибку…
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Окружение
+      description: "Версия PHP/open.mp, ОС, браузер или ссылка на GitHub Actions"
+      placeholder: "Windows 11 / PHP 8.3 / Chrome"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи и скриншоты (необязательно)
+      description: "Обрежьте ключи, IP частных серверов и персональные данные"
+      render: text

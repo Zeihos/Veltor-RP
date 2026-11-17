@@ -1,0 +1,40 @@
+name: "✨ Предложить улучшение"
+description: "Идеи для игровых систем, сайта, форума или инфраструктуры"
+title: "[Предложение] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Мы открыты к предметным предложениям. Сначала посмотрите [план разработки](https://github.com/Zeihos/Veltor-RP/blob/main/docs/ROADMAP.md), чтобы избежать повторов.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Для какого раздела?
+      options:
+        - Игровой мод
+        - Сайт
+        - Форум
+        - Оформление
+        - Инфраструктура и документация
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую задачу решаем?
+      description: "Почему эта возможность нужна проекту?"
+      placeholder: "Сейчас пользователи не могут…"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Ваше предложение
+      placeholder: "Опишите, как это должно работать для игрока или администратора"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Возможные альтернативы и ограничения
+      description: "Необязательно: компромиссы, совместимость и ссылки на референсы"
