@@ -1,4 +1,4 @@
-name: Game source check
+name: Игровая сборка · open.mp
 on:
   push:
     paths:
@@ -8,6 +8,9 @@ on:
     paths:
       - 'Игра/**'
       - '.github/workflows/game.yml'
+permissions:
+  contents: read
+
 jobs:
   pawn:
     runs-on: ubuntu-22.04
