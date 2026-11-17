@@ -17,6 +17,7 @@
 #define AUTH_NONE 0
 #define AUTH_REGISTER 1
 #define AUTH_LOGIN 2
+// Temporary staff controls are loaded from SQLite only after bcrypt authentication.
 
 new DB:gDb;
 new bool:gAuthed[MAX_PLAYERS];
@@ -30,6 +31,10 @@ new gPasswordHash[MAX_PLAYERS][BCRYPT_HASH_LENGTH];
 new gAuthPending[MAX_PLAYERS];
 new gAuthToken[MAX_PLAYERS];
 new gNextAuthToken;
+new bool:gStaff[MAX_PLAYERS];
+new gMutedUntil[MAX_PLAYERS];
+new gLastReport[MAX_PLAYERS];
+new gLastChat[MAX_PLAYERS];
 new gPlayerName[MAX_PLAYERS][MAX_PLAYER_NAME + 1];
 
 stock bool:DigitsOnly(const value[])
@@ -39,6 +44,8 @@ stock bool:DigitsOnly(const value[])
     for(new i=0; i<len; i++)if(value[i]<'0' || value[i]>'9')return false;
     return true;
 }
+#include "veltor_moderation.inc"
+
 stock LoadWorkCooldown(playerid)
 {
     new sql[180];
@@ -70,7 +77,12 @@ stock SaveUser(playerid)
         "UPDATE accounts SET money=%d,job=%d,car=%d WHERE name='%s'",
         gMoney[playerid], gJob[playerid], gOwnedCar[playerid], gPlayerName[playerid]);
     new DBResult:r = db_query(gDb, sql);
-    if (r) db_free_result(r);
+    if (!r)
+    {
+        printf("[VELTOR] Failed to save account: %s", gPlayerName[playerid]);
+        return 0;
+    }
+    db_free_result(r);
     return 1;
 }
 
@@ -108,6 +120,10 @@ stock InitPlayer(playerid)
     gAuthPending[playerid] = AUTH_NONE;
     gAuthToken[playerid] = ++gNextAuthToken;
     gPasswordHash[playerid][0] = EOS;
+    gStaff[playerid] = false;
+    gMutedUntil[playerid] = 0;
+    gLastReport[playerid] = 0;
+    gLastChat[playerid] = 0;
     GetPlayerName(playerid, gPlayerName[playerid], MAX_PLAYER_NAME + 1);
     return 1;
 }
@@ -155,6 +171,7 @@ stock FinishAuth(playerid)
         return 0;
     }
     LoadWorkCooldown(playerid);
+    LoadModeration(playerid);
     gAuthed[playerid] = true;
     SetSpawnInfo(playerid, NO_TEAM, 60, START_X, START_Y, START_Z, 90.0, 0, 0, 0, 0, 0, 0);
     SpawnPlayer(playerid);
@@ -198,6 +215,12 @@ public OnGameModeInit()
         return 0;
     }
     db_free_result(r);
+    if (!InitModerationDB())
+    {
+        print("[VELTOR] Could not initialize staff, reports or moderation tables");
+        db_close(gDb);
+        return 0;
+    }
     print("[VELTOR] Clean SQLite account system ready");
     return 1;
 }
@@ -238,6 +261,8 @@ public OnPlayerDisconnect(playerid, reason)
     gAuthed[playerid] = false;
     gAuthPending[playerid] = AUTH_NONE;
     gAuthToken[playerid] = 0;
+    gStaff[playerid] = false;
+    gMutedUntil[playerid] = 0;
     return 1;
 }
 
@@ -267,6 +292,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 {
     #pragma unused listitem
     if (dialogid != D_LOGIN && dialogid != D_REGISTER) return 0;
+    if (gAuthed[playerid]) return 1;
     if (!response) { Kick(playerid); return 1; }
     new len = strlen(inputtext);
     if (len < 8 || len > 72)
@@ -366,17 +392,30 @@ public OnPlayerText(playerid, text[])
 {
     #pragma unused text
     if (!gAuthed[playerid]) return 0;
+    if (IsMuted(playerid))
+    {
+        SendClientMessage(playerid, C_RED, "Your chat is temporarily restricted.");
+        return 0;
+    }
+    new now = gettime();
+    if (gLastChat[playerid] && now - gLastChat[playerid] < CHAT_COOLDOWN)
+    {
+        SendClientMessage(playerid, C_RED, "Please do not flood the chat.");
+        return 0;
+    }
+    gLastChat[playerid] = now;
     return 1;
 }
 
 public OnPlayerCommandText(playerid, cmdtext[])
 {
     if (!gAuthed[playerid]) return 1;
+    if (HandleModerationCommand(playerid, cmdtext)) return 1;
     if (!strcmp(cmdtext, "/help", true))
     {
         SendClientMessage(playerid, C_ORANGE, "VELTOR RP | Commands");
         SendClientMessage(playerid, C_WHITE, "/stats /job 1-3 /work /spawn /buycar /car /pay ID amount");
-        SendClientMessage(playerid, C_WHITE, "/me action /do description /b text /report message");
+        SendClientMessage(playerid, C_WHITE, "/me action /do description /b text /report message /ahelp (staff)");
         return 1;
     }
     if (!strcmp(cmdtext, "/stats", true))
@@ -506,15 +545,6 @@ public OnPlayerCommandText(playerid, cmdtext[])
         strmid(action, cmdtext, 3, strlen(cmdtext), sizeof action);
         format(msg, sizeof msg, "(( %s: %s ))", gPlayerName[playerid], action);
         SendClientMessageToAll(C_WHITE, msg);
-        return 1;
-    }
-    if (!strcmp(cmdtext, "/report ", true, 8))
-    {
-        if (strlen(cmdtext) <= 8) return 1;
-        new detail[120];
-        strmid(detail, cmdtext, 8, strlen(cmdtext), sizeof detail);
-        printf("[REPORT] %s [%d]: %s", gPlayerName[playerid], playerid, detail);
-        SendClientMessage(playerid, C_GREEN, "Your report was sent to the server console.");
         return 1;
     }
     SendClientMessage(playerid, C_RED, "Unknown command. Type /help.");
