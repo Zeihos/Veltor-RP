@@ -135,7 +135,7 @@ try {
                 if($action==='pin')$r['pinned']=!$r['pinned'];
                 if($action==='delete-thread')$r['deleted']=true;
                 if($action==='restore-thread')$r['deleted']=false;
-                if($action==='move-thread'){$b=findrow($db['boards'],(int)($_POST['board_id']??0));demand($b!==null,'Раздел не найден');$r['board_id']=$b['id'];}
+                if($action==='move-thread'){$b=findrow($db['boards'],(int)($_POST['board_id']??0));demand($b!==null,'Раздел не найден');demand(can_move_thread_to_board($db,$t,$b),'Нельзя переносить приватную тему в публичный раздел');$r['board_id']=$b['id'];}
                 break;
             }unset($r);
             audit($db,$u['id'],$action,'thread '.$id);return (int)$t['id'];
@@ -176,7 +176,7 @@ try {
         db_change(function (&$db)use($id,$u,$title,$desc,$cat,$private,$staffOnly){
             demand(findrow($db['categories'],$cat)!==null,'Категория не найдена');
             if(!$id)$db['boards'][]=['id'=>newid($db),'category_id'=>$cat,'title'=>$title,'description'=>$desc,'icon'=>'chat','private'=>$private,'only_staff'=>$staffOnly,'sort'=>count($db['boards'])+1];
-            else{$found=false;foreach($db['boards'] as &$r)if($r['id']===$id){$r['title']=$title;$r['description']=$desc;$r['category_id']=$cat;$r['private']=$private;$r['only_staff']=$staffOnly;$found=true;break;}unset($r);demand($found,'Раздел не найден');}
+            else{demand(can_change_board_privacy($db,$id,$private),'Нельзя отключить приватность раздела с темами');$found=false;foreach($db['boards'] as &$r)if($r['id']===$id){$r['title']=$title;$r['description']=$desc;$r['category_id']=$cat;$r['private']=$private;$r['only_staff']=$staffOnly;$found=true;break;}unset($r);demand($found,'Раздел не найден');}
             audit($db,$u['id'],'board','board '.$id.' '.$title);
         });alert('Раздел сохранён');back_to('admin',['tab'=>'boards']);
     }

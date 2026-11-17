@@ -107,6 +107,18 @@ function thread_visible(array $db,array $t,?array $u): bool {
     $b=findrow($db['boards'],(int)$t['board_id']);
     return (empty($t['deleted'])||staff($u)) && $b!==null && (empty($b['private']) || staff($u) || ($u!==null && (int)$t['author_id']===(int)$u['id']));
 }
+function can_move_thread_to_board(array $db,array $thread,array $destination): bool {
+    $source=findrow($db['boards'],(int)$thread['board_id']);
+    return $source!==null && !( !empty($source['private']) && empty($destination['private']));
+}
+function can_change_board_privacy(array $db,int $boardId,bool $bePrivate): bool {
+    if($bePrivate)return true;
+    $board=findrow($db['boards'],$boardId);
+    if($board===null)return false;
+    if(empty($board['private']))return true;
+    foreach($db['threads'] as $thread)if((int)$thread['board_id']===$boardId)return false;
+    return true;
+}
 function can_start(array $b,?array $u): bool {return $u!==null && (empty($b['only_staff'])||staff($u));}
 function topic_posts(array $db,int $tid): array {return array_values(array_filter($db['posts'],fn($p)=>(int)$p['thread_id']===$tid && empty($p['deleted'])));}
 function human_date(int $ts): string {return date('d.m.Y, H:i',$ts);}

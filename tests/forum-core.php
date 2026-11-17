@@ -17,6 +17,11 @@ check(thread_visible($db, $private, $staff), 'administrators can moderate privat
 check(thread_visible($db, $public, null), 'public board readable without login');
 $private['deleted'] = true;
 check(!thread_visible($db, $private, $author) && thread_visible($db, $private, $staff), 'deleted private thread visible only to staff');
+check(!can_move_thread_to_board($db, $private, findrow($db['boards'], 4)), 'private complaints cannot move to public board');
+check(can_move_thread_to_board($db, $private, findrow($db['boards'], 6)), 'private complaints may move to another private board');
+check(can_change_board_privacy($db, 5, false), 'empty private board can become public');
+$db['threads'][] = ['id'=>999, 'board_id'=>5, 'author_id'=>10, 'deleted'=>false];
+check(!can_change_board_privacy($db, 5, false), 'private board with complaints cannot become public');
 check(h('<script>') === '&lt;script&gt;', 'HTML escaping');
 check(is_url('https://example.org/') && !is_url('javascript:alert(1)'), 'URL validation');
 echo "Forum core tests: OK\n";
