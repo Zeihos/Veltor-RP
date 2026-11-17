@@ -1,26 +1,33 @@
 name: PHP checks
+
 on:
   push:
     paths:
       - 'Сайт/**'
       - 'Форум/**'
       - 'tests/**'
+      - 'tools/**'
       - '.github/workflows/php.yml'
   pull_request:
     paths:
       - 'Сайт/**'
       - 'Форум/**'
       - 'tests/**'
+      - 'tools/**'
       - '.github/workflows/php.yml'
+
+permissions:
+  contents: read
+
 jobs:
   php:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check PHP version
+      - name: Runtime
         run: php -v
       - name: PHP syntax
-        run: find 'Сайт' 'Форум' -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find 'Сайт' 'Форум' 'tools' 'tests' -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Security files present
         run: |
           for part in 'Сайт' 'Форум'; do
@@ -32,3 +39,5 @@ jobs:
         run: php tests/site-core.php
       - name: Forum privacy regression tests
         run: php tests/forum-core.php
+      - name: HTTP restrictions (localhost only)
+        run: bash tools/http-smoke.sh

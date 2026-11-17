@@ -1,0 +1,20 @@
+* text=auto
+*.php text eol=lf
+*.pwn text eol=lf
+*.inc text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.css text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.webp binary
+*.zip binary
+*.rar binary
+*.7z binary
