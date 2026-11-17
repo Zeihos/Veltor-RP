@@ -1,0 +1,34 @@
+name: Game source check
+on:
+  push:
+    paths:
+      - 'Игра/**'
+      - '.github/workflows/game.yml'
+  pull_request:
+    paths:
+      - 'Игра/**'
+      - '.github/workflows/game.yml'
+jobs:
+  pawn:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install 32-bit compatibility libraries
+        run: sudo apt-get update && sudo apt-get install -y libc6-i386
+      - name: Download official Pawn compiler and open.mp includes
+        run: |
+          mkdir -p .ci/compiler .ci/server
+          curl -fL --retry 3 -o .ci/pawnc.tar.gz https://github.com/openmultiplayer/compiler/releases/download/v3.10.11/pawnc-3.10.11-linux.tar.gz
+          curl -fL --retry 3 -o .ci/openmp.tar.gz https://github.com/openmultiplayer/open.mp/releases/download/v1.6.7.3218/open.mp-linux-x86.tar.gz
+          tar -xzf .ci/pawnc.tar.gz -C .ci/compiler
+          tar -xzf .ci/openmp.tar.gz -C .ci/server
+      - name: Compile gamemode
+        run: |
+          COMPILER="$(find "$PWD/.ci/compiler" -type f -name pawncc | head -n 1)"
+          INCLUDE="$(find "$PWD/.ci/server" -type f -name open.mp.inc | head -n 1)"
+          test -n "$COMPILER" && test -n "$INCLUDE"
+          chmod +x "$COMPILER"
+          mkdir -p "$PWD/.ci/out"
+          cd "$(dirname "$COMPILER")"
+          "./$(basename "$COMPILER")" "$GITHUB_WORKSPACE/Игра/gamemodes/veltor.pwn" "-i$(dirname "$INCLUDE")" "-o$GITHUB_WORKSPACE/.ci/out/veltor.amx" -Z
+          test -s "$GITHUB_WORKSPACE/.ci/out/veltor.amx"
