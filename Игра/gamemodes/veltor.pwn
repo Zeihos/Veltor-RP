@@ -1,4 +1,5 @@
 #include <open.mp>
+#include <samp_bcrypt>
 
 // VELTOR ROLEPLAY / independent test gamemode (development build).
 // Uses open.mp built-ins; no RADMIR SQL dump, plugins or external credentials.
@@ -13,6 +14,9 @@
 #define START_Z 13.55
 #define CAR_PRICE 15000
 #define WORK_DELAY 60
+#define AUTH_NONE 0
+#define AUTH_REGISTER 1
+#define AUTH_LOGIN 2
 
 new DB:gDb;
 new bool:gAuthed[MAX_PLAYERS];
@@ -22,8 +26,10 @@ new gOwnedCar[MAX_PLAYERS];
 new gCarId[MAX_PLAYERS];
 new gLastWork[MAX_PLAYERS];
 new gAttempts[MAX_PLAYERS];
-new gSalt[MAX_PLAYERS][33];
-new gPasswordHash[MAX_PLAYERS][65];
+new gPasswordHash[MAX_PLAYERS][BCRYPT_HASH_LENGTH];
+new gAuthPending[MAX_PLAYERS];
+new gAuthToken[MAX_PLAYERS];
+new gNextAuthToken;
 new gPlayerName[MAX_PLAYERS][MAX_PLAYER_NAME + 1];
 
 stock bool:DigitsOnly(const value[])
@@ -99,7 +105,8 @@ stock InitPlayer(playerid)
     gCarId[playerid] = 0;
     gLastWork[playerid] = 0;
     gAttempts[playerid] = 0;
-    gSalt[playerid][0] = EOS;
+    gAuthPending[playerid] = AUTH_NONE;
+    gAuthToken[playerid] = ++gNextAuthToken;
     gPasswordHash[playerid][0] = EOS;
     GetPlayerName(playerid, gPlayerName[playerid], MAX_PLAYER_NAME + 1);
     return 1;
@@ -118,9 +125,15 @@ stock ShowAuth(playerid)
     }
     if (db_num_rows(r) > 0)
     {
-        db_get_field_assoc(r, "salt", gSalt[playerid], 33);
-        db_get_field_assoc(r, "password", gPasswordHash[playerid], 65);
+        db_get_field_assoc(r, "password", gPasswordHash[playerid], BCRYPT_HASH_LENGTH);
         db_free_result(r);
+        if (strlen(gPasswordHash[playerid]) != 60 || gPasswordHash[playerid][0] != '$' ||
+            gPasswordHash[playerid][1] != '2')
+        {
+            SendClientMessage(playerid, C_RED, "Legacy accounts must reset their password. Contact an administrator.");
+            Kick(playerid);
+            return 0;
+        }
         ShowPlayerDialog(playerid, D_LOGIN, DIALOG_STYLE_PASSWORD,
             "VELTOR ROLEPLAY | Login", "Enter your account password:", "Login", "Exit");
     }
@@ -154,6 +167,7 @@ stock FinishAuth(playerid)
 public OnGameModeInit()
 {
     SetGameModeText("VELTOR ROLEPLAY | TEST");
+    bcrypt_set_thread_limit(2);
     ShowPlayerMarkers(PLAYER_MARKERS_MODE_GLOBAL);
     DisableInteriorEnterExits();
     SetWorldTime(12);
@@ -222,6 +236,8 @@ public OnPlayerDisconnect(playerid, reason)
     if (gCarId[playerid] != 0) DestroyVehicle(gCarId[playerid]);
     gCarId[playerid] = 0;
     gAuthed[playerid] = false;
+    gAuthPending[playerid] = AUTH_NONE;
+    gAuthToken[playerid] = 0;
     return 1;
 }
 
@@ -259,28 +275,66 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         ShowAuth(playerid);
         return 1;
     }
-    new hash[65];
+    if (gAuthPending[playerid] != AUTH_NONE) return 1;
     if (dialogid == D_REGISTER)
     {
-        // Legacy development salt; replace SHA256 auth with bcrypt/Argon2 before public beta.
-        format(gSalt[playerid], 33, "%08x%08x%08x%08x", random(2147483646),
-            random(2147483646), random(2147483646), random(2147483646));
-        SHA256_PassHash(inputtext, gSalt[playerid], hash, sizeof hash);
-        new sql[320];
-        format(sql, sizeof sql,
-            "INSERT INTO accounts(name,salt,password,money,job,car) VALUES('%s','%s','%s',2500,0,0)",
-            gPlayerName[playerid], gSalt[playerid], hash);
-        new DBResult:r = db_query(gDb, sql);
-        if (!r) { SendClientMessage(playerid, C_RED, "Registration failed. Retry later."); Kick(playerid); return 1; }
-        db_free_result(r);
-        gMoney[playerid] = 2500;
-        gJob[playerid] = 0;
-        gOwnedCar[playerid] = 0;
-        FinishAuth(playerid);
+        gAuthPending[playerid] = AUTH_REGISTER;
+        bcrypt_hash(playerid, "OnRegistrationHashed", inputtext, BCRYPT_COST, "i", gAuthToken[playerid]);
         return 1;
     }
-    SHA256_PassHash(inputtext, gSalt[playerid], hash, sizeof hash);
-    if (strcmp(hash, gPasswordHash[playerid], true) != 0)
+    gAuthPending[playerid] = AUTH_LOGIN;
+    bcrypt_verify(playerid, "OnLoginVerified", inputtext, gPasswordHash[playerid],
+        "i", gAuthToken[playerid]);
+    return 1;
+}
+
+forward OnRegistrationHashed(playerid, token);
+public OnRegistrationHashed(playerid, token)
+{
+    if (!IsPlayerConnected(playerid) || gAuthToken[playerid] != token ||
+        gAuthPending[playerid] != AUTH_REGISTER) return 1;
+    gAuthPending[playerid] = AUTH_NONE;
+    new hash[BCRYPT_HASH_LENGTH];
+    bcrypt_get_hash(hash, sizeof hash);
+    if (strlen(hash) != 60)
+    {
+        SendClientMessage(playerid, C_RED, "Password hashing failed.");
+        Kick(playerid);
+        return 1;
+    }
+    // Recheck uniqueness after the asynchronous operation.
+    new sql[320];
+    format(sql, sizeof sql, "SELECT name FROM accounts WHERE name='%s' LIMIT 1", gPlayerName[playerid]);
+    new DBResult:check = db_query(gDb, sql);
+    if (!check) { Kick(playerid); return 1; }
+    new exists = db_num_rows(check);
+    db_free_result(check);
+    if (exists > 0) { SendClientMessage(playerid, C_RED, "Account already exists."); Kick(playerid); return 1; }
+    format(sql, sizeof sql,
+        "INSERT INTO accounts(name,salt,password,money,job,car) VALUES('%s','','%s',2500,0,0)",
+        gPlayerName[playerid], hash);
+    new DBResult:r = db_query(gDb, sql);
+    if (!r)
+    {
+        SendClientMessage(playerid, C_RED, "Registration failed.");
+        Kick(playerid);
+        return 1;
+    }
+    db_free_result(r);
+    gMoney[playerid] = 2500;
+    gJob[playerid] = 0;
+    gOwnedCar[playerid] = 0;
+    FinishAuth(playerid);
+    return 1;
+}
+
+forward OnLoginVerified(playerid, bool:success, token);
+public OnLoginVerified(playerid, bool:success, token)
+{
+    if (!IsPlayerConnected(playerid) || gAuthToken[playerid] != token ||
+        gAuthPending[playerid] != AUTH_LOGIN) return 1;
+    gAuthPending[playerid] = AUTH_NONE;
+    if (!success)
     {
         gAttempts[playerid]++;
         if (gAttempts[playerid] >= 3) { Kick(playerid); return 1; }
@@ -302,6 +356,8 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
     gOwnedCar[playerid] = db_get_field_assoc_int(r, "car");
     db_free_result(r);
     if (gMoney[playerid] < 0 || gMoney[playerid] > 100000000) gMoney[playerid] = 2500;
+    if (gJob[playerid] < 0 || gJob[playerid] > 3) gJob[playerid] = 0;
+    if (gOwnedCar[playerid] != 0 && gOwnedCar[playerid] != 560) gOwnedCar[playerid] = 0;
     FinishAuth(playerid);
     return 1;
 }
