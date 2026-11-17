@@ -79,6 +79,22 @@ jobs:
           cat .ci/server-boot.log
           if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then exit "$rc"; fi
           grep -F "[VELTOR] Clean SQLite account system ready" .ci/server-boot.log
+          python3 - "$ROOT/scriptfiles/veltor.db" <<'PY'
+          import sqlite3,sys
+          from pathlib import Path
+          db=Path(sys.argv[1])
+          if not db.is_file():
+              raise SystemExit(f"Expected SQLite file missing: {db}")
+          with sqlite3.connect(f"file:{db.resolve()}?mode=ro", uri=True) as conn:
+              actual={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+              required={"accounts","work_cooldown","staff","mutes","reports","moderation_audit"}
+              missing=required-actual
+              if missing:
+                  raise SystemExit(f"Missing moderation tables: {sorted(missing)}")
+              columns={row[1] for row in conn.execute("PRAGMA table_info(reports)")}
+              assert {"reporter","message","status","closed_by","created_at"}<=columns
+              print("PASS: SQLite accounts, jobs, reports, staff, mutes and audit tables initialized.")
+          PY
       - name: Upload compiled gamemode
         uses: actions/upload-artifact@v4
         with:
