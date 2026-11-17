@@ -13,6 +13,7 @@ $source = Join-Path $root 'gamemodes\veltor.pwn'
 $amx = Join-Path $server 'gamemodes\veltor.amx'
 $serverUrl = 'https://github.com/openmultiplayer/open.mp/releases/download/v1.6.7.3218/open.mp-win-x86.zip'
 $compilerUrl = 'https://github.com/openmultiplayer/compiler/releases/download/v3.10.11/pawnc-3.10.11-windows.zip'
+$bcryptUrl = 'https://github.com/Sreyas-Sreelal/samp-bcrypt/releases/download/0.4.1/samp-bcrypt-windows-x86.zip'
 function Get-Zip([string]$url, [string]$dest) {
     Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -MaximumRedirection 5
     $f=[IO.File]::OpenRead($dest)
@@ -41,12 +42,21 @@ try {
         if(!$binary){ throw 'Cannot locate pawncc.exe in official ZIP' }
         Copy-Contents (Split-Path $binary.FullName) $tools
     }
+    $bcryptDll=Join-Path $server 'plugins\samp_bcrypt.dll'
+    if(!(Test-Path $bcryptDll)) {
+        Get-Zip $bcryptUrl (Join-Path $cache 'bcrypt.zip')
+        Expand-Archive (Join-Path $cache 'bcrypt.zip') (Join-Path $cache 'bcrypt') -Force
+        $native=Get-ChildItem (Join-Path $cache 'bcrypt') -Recurse -File -Filter '*bcrypt*.dll' | Select-Object -First 1
+        if(!$native){throw 'samp_bcrypt.dll missing from official bcrypt release'}
+        New-Item -ItemType Directory -Force (Join-Path $server 'plugins') | Out-Null
+        Copy-Item -LiteralPath $native.FullName -Destination $bcryptDll -Force
+    }
     $inc=Get-ChildItem $server -Recurse -Filter 'open.mp.inc' -File | Where-Object { $_.FullName -notlike '*TOOLS\Pawn*' } | Select-Object -First 1
     if(!$inc){ throw 'open.mp.inc missing from downloaded open.mp package' }
     $incPath=Split-Path $inc.FullName
     New-Item -ItemType Directory -Force (Join-Path $server 'gamemodes'),(Join-Path $server 'scriptfiles') | Out-Null
     $log=Join-Path $root 'BUILD-LOG.txt'
-    & $compiler $source "-i$incPath" "-o$amx" '-Z' 2>&1 | Tee-Object -FilePath $log
+    & $compiler $source "-i$incPath" "-i$(Join-Path $root 'include')" "-o$amx" '-Z' 2>&1 | Tee-Object -FilePath $log
     $code=$LASTEXITCODE
     if($code -ne 0 -or !(Test-Path $amx)){throw "Pawn build failed (exit $code). Open BUILD-LOG.txt."}
     $config = @{
@@ -55,8 +65,8 @@ try {
       announce=$false
       website='https://vk.ru/veltor_rp'
       max_players=30
-      network=@{port=7777;allow_037_clients=$true}
-      pawn=@{main_scripts=@('veltor 1');side_scripts=@();legacy_plugins=@()}
+      network=@{port=7777;bind='127.0.0.1';allow_037_clients=$true}
+      pawn=@{main_scripts=@('veltor 1');side_scripts=@();legacy_plugins=@('samp_bcrypt')}
       rcon=@{enable=$false;password=[Guid]::NewGuid().ToString('N')}
       logging=@{enable=$true}
     }
