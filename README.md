@@ -1,42 +1,64 @@
 # VELTOR ROLEPLAY
 
-Independent VELTOR RolePlay community project. The repository contains **two separate PHP applications**: a site and a forum. These are not the official RADMIR RP sources or a complete playable game server.
+**VELTOR ROLEPLAY** — независимый игровой RP-проект. Репозиторий объединяет сайт, форум, оформление и разрабатываемый мод для open.mp.
 
-## Structure
+> **Статус:** сайт и форум представлены исходниками PHP и проходят автоматические проверки. Игровой мод находится в отдельной тестовой ветке. Публичный игровой релиз и интеграция трёх компонентов **пока не готовы**.
 
-- `Сайт/` — PHP website, registration, admin tools, news, server listings and request-only store.
-- `Форум/` — PHP forum, topics, complaints, roles, moderation and notifications.
-- `Оформление/` — VK/Telegram visual assets.
-- `tests/` — PHP core regression tests.
-- `deploy/` — server configuration samples.
+## Состав проекта
 
-## Installation
+| Каталог | Назначение | Статус |
+|---|---|---|
+| [Сайт](./Сайт) | Портал на PHP: новости, аккаунты, заявки магазина, админ-панель | Исходники доступны; нужна настройка хостинга |
+| [Форум](./Форум) | Темы, жалобы, обращения, роли и модерация | Исходники доступны; нужна настройка хостинга |
+| [Оформление](./Оформление) | Аватарка, обложка и материалы публикаций | Исходные материалы |
+| [Игра](../../tree/develop/gameplay-mvp/Игра) | Экспериментальный Pawn/open.mp RP-мод | **Отдельная ветка `develop/gameplay-mvp`** |
+| [tests](./tests) | Автоматические проверки PHP | GitHub Actions |
+| [tools](./tools) | Локальная проверка HTTP-доступа | Только для разработки |
+| [deploy](./deploy) | Примеры настройки веб-сервера | Нужна адаптация под хостинг |
+| [docs](./docs) | Установка, структура и план работ | Поддерживаемая документация |
 
-**Requirements:** PHP 8.1+ with JSON, sessions and password hashing; writable `storage/`; Apache 2.4 with AllowOverride enabled (or Nginx with explicit deny rules).
+## Быстрый старт
 
-1. Deploy `Сайт/` to the site's document root and `Форум/` to a different document root / subdomain.
-2. Visit `https://your-site/install.php` and `https://your-forum/install.php` to create **different** administrator accounts.
-3. Configure public links in both admin panels, enable HTTPS and back up both `storage/` directories.
-4. **Do not** place runtime databases, backups, old SQL dumps, passwords or downloaded executables into Git.
+Для сайта и форума требуется **PHP 8.1+**. MySQL не требуется: приложения отдельно сохраняют данные в своих каталогах `storage/`.
 
-The site and forum currently use **separate accounts**. Neither application accepts payments. The store records requests only. Game-to-web synchronization, email verification and real-time game monitoring are not implemented.
+1. Разместите содержимое `Сайт/` в корне **отдельного** веб-сайта, а `Форум/` — на отдельном поддомене/виртуальном хосте.
+2. Настройте HTTPS и запрет прямого доступа к `app/` и `storage/` (для Apache — `.htaccess`, для Nginx — отдельные правила).
+3. Откройте `install.php` каждого приложения и создайте **разных** администраторов.
+4. Проверьте права записи в `storage/`, резервное копирование и настройки ссылок.
 
-### Security
+Подробная инструкция: **[Развёртывание и безопасность](./docs/DEPLOYMENT.md)**.
 
-**Apache:** the committed `.htaccess` files block direct HTTP access to `app/` and `storage/`. Configure `AllowOverride` so Apache actually reads these files. Check that `/storage/database.lock` (after installation) returns **403**.
+Для локального изучения интерфейса:
 
-**Nginx:** `.htaccess` is ignored. Apply `deploy/nginx-restrictions.conf` to BOTH virtual hosts before exposing the services. Without these rules, runtime lock files and temporary data may be publicly readable.
+```bash
+php -S 127.0.0.1:8000 -t 'Сайт' tools/dev-router.php
+# В другом терминале:
+php -S 127.0.0.1:8001 -t 'Форум' tools/dev-router.php
+```
 
-Do not expose PHP's development server to the internet. Before production use, add automated backups, spam prevention and a persistent server monitoring strategy.
+Встроенный сервер PHP предназначен **только для локальной разработки**, не для интернета. Маршрутизатор `tools/dev-router.php` блокирует служебные каталоги.
 
-## Local checks
+## Проверки
 
-```sh
+```bash
 find 'Сайт' 'Форум' -type f -name '*.php' -print0 | xargs -0 -n1 php -l
 php tests/site-core.php
 php tests/forum-core.php
+bash tools/http-smoke.sh
 ```
 
-These checks do not replace end-to-end tests on the actual Apache/Nginx hosting environment.
+CI: [GitHub Actions](../../actions) · [Как проверять изменения](./docs/TESTING.md).
 
-Community: [VK](https://vk.ru/veltor_rp) · [Telegram](https://t.me/volterrp).
+## Ветки
+
+- **`main`** — сайт, форум, фирменные материалы, документация и проверки.
+- **`develop/gameplay-mvp`** — отдельный экспериментальный игровой сервер; переносится в `main` только после проверок.
+- [Draft PR #1](../../pull/1) — текущая игровая разработка.
+
+Не добавляйте в репозиторий базы с реальными игроками, секреты, дампы сторонних серверов и скомпилированные исполняемые файлы. Сайт, форум и игра пока используют **разные аккаунты**, магазин не проводит оплату, автоматический мониторинг серверов ещё не подключён.
+
+**Подробнее:** [Архитектура](./docs/ARCHITECTURE.md) · [План разработки](./docs/ROADMAP.md) · [Участие в разработке](./CONTRIBUTING.md) · [Политика безопасности](./SECURITY.md).
+
+**Сообщество:** [ВКонтакте](https://vk.ru/veltor_rp) · [Telegram](https://t.me/volterrp).
+
+*Это самостоятельный проект, не официальный репозиторий RADMIR RP.*

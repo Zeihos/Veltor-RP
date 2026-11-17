@@ -1,4 +1,4 @@
-# User databases, secrets, temporary storage files
+# Runtime databases, secrets and generated state
 Сайт/storage/*
 !Сайт/storage/.htaccess
 !Сайт/storage/index.php
@@ -14,13 +14,29 @@
 **/*.sqlite
 **/*.sqlite3
 **/*.db
+**/*.db-*
 **/.forum-*
 **/.veltor-*
-# Generated local build and server artifacts
+
+# Built game server, downloaded toolchains and temporary artifacts
 Игра/server/
 Игра/.download-cache/
 Игра/BUILD-LOG.txt
+.ci/
 **/*.amx
 **/*.exe
 **/*.dll
 **/*.so
+**/*.pdb
+**/*.dmp
+**/*.zip
+**/*.rar
+**/*.7z
+
+# Editor / OS / local testing
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
