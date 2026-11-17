@@ -1,0 +1,26 @@
+# User databases, secrets, temporary storage files
+Сайт/storage/*
+!Сайт/storage/.htaccess
+!Сайт/storage/index.php
+Форум/storage/*
+!Форум/storage/.htaccess
+!Форум/storage/index.php
+**/.env
+**/.env.*
+**/*.lock
+**/*.log
+**/*.bak
+**/*.sql
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/.forum-*
+**/.veltor-*
+# Generated local build and server artifacts
+Игра/server/
+Игра/.download-cache/
+Игра/BUILD-LOG.txt
+**/*.amx
+**/*.exe
+**/*.dll
+**/*.so
