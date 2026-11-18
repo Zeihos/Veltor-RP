@@ -446,7 +446,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (!strcmp(cmdtext, "/help", true))
     {
         SendClientMessage(playerid, C_ORANGE, "VELTOR RP | Commands");
-        SendClientMessage(playerid, C_WHITE, "/stats /jobs /job 1-3 /jobgps /work /spawn /buycar /car /pay ID amount");
+        SendClientMessage(playerid, C_WHITE, "/stats /jobs /job 1-3 /jobgps /work /workstatus /cancelwork");
         SendClientMessage(playerid, C_WHITE, "/me action /do description /b text /report message /ahelp (staff)");
         return 1;
     }

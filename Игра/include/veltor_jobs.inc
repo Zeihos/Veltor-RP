@@ -150,6 +150,36 @@ stock HandleJobCommand(playerid, const cmdtext[])
         return 1;
     }
 
+    if (!strcmp(cmdtext, "/workstatus", true))
+    {
+        if (!gShiftActive[playerid])
+        {
+            SendClientMessage(playerid, C_WHITE, "You have no active shift. Use /jobgps and /work.");
+            return 1;
+        }
+        new remaining = JOB_MIN_TRAVEL - (gettime() - gShiftStarted[playerid]);
+        if (remaining < 0) remaining = 0;
+        new message[128];
+        format(message, sizeof message,
+            "Shift active | Job %d | Minimum time remaining: %d seconds",
+            gJob[playerid], remaining);
+        SendClientMessage(playerid, C_ORANGE, message);
+        SendClientMessage(playerid, C_WHITE, "Follow the destination checkpoint; type /work on foot to finish.");
+        return 1;
+    }
+
+    if (!strcmp(cmdtext, "/cancelwork", true))
+    {
+        if (!gShiftActive[playerid])
+        {
+            SendClientMessage(playerid, C_WHITE, "You have no active shift.");
+            return 1;
+        }
+        CancelJobShift(playerid);
+        SendClientMessage(playerid, C_WHITE, "Your shift was cancelled without payment.");
+        return 1;
+    }
+
     if (!strcmp(cmdtext, "/work", true))
     {
         new job = gJob[playerid];
