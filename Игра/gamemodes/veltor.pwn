@@ -26,6 +26,10 @@ new gJob[MAX_PLAYERS];
 new gOwnedCar[MAX_PLAYERS];
 new gCarId[MAX_PLAYERS];
 new gLastWork[MAX_PLAYERS];
+new gJobXP[MAX_PLAYERS];
+new gJobShifts[MAX_PLAYERS];
+new bool:gShiftActive[MAX_PLAYERS];
+new gShiftStarted[MAX_PLAYERS];
 new gAttempts[MAX_PLAYERS];
 new gPasswordHash[MAX_PLAYERS][BCRYPT_HASH_LENGTH];
 new gAuthPending[MAX_PLAYERS];
@@ -45,6 +49,7 @@ stock bool:DigitsOnly(const value[])
     return true;
 }
 #include "veltor_moderation.inc"
+#include "veltor_jobs.inc"
 
 stock LoadWorkCooldown(playerid)
 {
@@ -116,6 +121,10 @@ stock InitPlayer(playerid)
     gOwnedCar[playerid] = 0;
     gCarId[playerid] = 0;
     gLastWork[playerid] = 0;
+    gJobXP[playerid] = 0;
+    gJobShifts[playerid] = 0;
+    gShiftActive[playerid] = false;
+    gShiftStarted[playerid] = 0;
     gAttempts[playerid] = 0;
     gAuthPending[playerid] = AUTH_NONE;
     gAuthToken[playerid] = ++gNextAuthToken;
@@ -171,6 +180,7 @@ stock FinishAuth(playerid)
         return 0;
     }
     LoadWorkCooldown(playerid);
+    LoadJobProgress(playerid);
     LoadModeration(playerid);
     gAuthed[playerid] = true;
     SetSpawnInfo(playerid, NO_TEAM, 60, START_X, START_Y, START_Z, 90.0, 0, 0, 0, 0, 0, 0);
@@ -215,6 +225,12 @@ public OnGameModeInit()
         return 0;
     }
     db_free_result(r);
+    if (!InitJobDB())
+    {
+        print("[VELTOR] Cannot initialize job_progress table");
+        db_close(gDb);
+        return 0;
+    }
     if (!InitModerationDB())
     {
         print("[VELTOR] Could not initialize staff, reports or moderation tables");
@@ -256,6 +272,7 @@ public OnPlayerDisconnect(playerid, reason)
 {
     #pragma unused reason
     SaveUser(playerid);
+    CancelJobShift(playerid);
     if (gCarId[playerid] != 0) DestroyVehicle(gCarId[playerid]);
     gCarId[playerid] = 0;
     gAuthed[playerid] = false;
@@ -278,6 +295,20 @@ public OnPlayerRequestClass(playerid, classid)
 public OnPlayerRequestSpawn(playerid)
 {
     if (!gAuthed[playerid]) return 0;
+    return 1;
+}
+
+public OnPlayerDeath(playerid, killerid, WEAPON:reason)
+{
+    #pragma unused killerid, reason
+    if (gAuthed[playerid]) CancelJobShift(playerid);
+    return 1;
+}
+
+public OnPlayerEnterCheckpoint(playerid)
+{
+    if (gAuthed[playerid] && gShiftActive[playerid] && AtJobLocation(playerid, true))
+        SendClientMessage(playerid, C_GREEN, "Destination reached. Use /work on foot to finish.");
     return 1;
 }
 
@@ -411,23 +442,25 @@ public OnPlayerCommandText(playerid, cmdtext[])
 {
     if (!gAuthed[playerid]) return 1;
     if (HandleModerationCommand(playerid, cmdtext)) return 1;
+    if (HandleJobCommand(playerid, cmdtext)) return 1;
     if (!strcmp(cmdtext, "/help", true))
     {
         SendClientMessage(playerid, C_ORANGE, "VELTOR RP | Commands");
-        SendClientMessage(playerid, C_WHITE, "/stats /job 1-3 /work /spawn /buycar /car /pay ID amount");
+        SendClientMessage(playerid, C_WHITE, "/stats /jobs /job 1-3 /jobgps /work /spawn /buycar /car /pay ID amount");
         SendClientMessage(playerid, C_WHITE, "/me action /do description /b text /report message /ahelp (staff)");
         return 1;
     }
     if (!strcmp(cmdtext, "/stats", true))
     {
         new msg[144];
-        format(msg, sizeof msg, "Name: %s | Cash: $%d | Job: %d | Car: %d",
-            gPlayerName[playerid], gMoney[playerid], gJob[playerid], gOwnedCar[playerid]);
+        format(msg, sizeof msg, "Name: %s | $%d | Job: %d | Lv%d | XP: %d | Shifts: %d",
+            gPlayerName[playerid], gMoney[playerid], gJob[playerid], JobLevel(playerid), gJobXP[playerid], gJobShifts[playerid]);
         SendClientMessage(playerid, C_GREEN, msg);
         return 1;
     }
     if (!strcmp(cmdtext, "/spawn", true))
     {
+        CancelJobShift(playerid);
         if (IsPlayerInAnyVehicle(playerid)) RemovePlayerFromVehicle(playerid);
         SetPlayerInterior(playerid, 0);
         SetPlayerVirtualWorld(playerid, 0);
@@ -442,25 +475,10 @@ public OnPlayerCommandText(playerid, cmdtext[])
     }
     if (!strcmp(cmdtext, "/job 1", true) || !strcmp(cmdtext, "/job 2", true) || !strcmp(cmdtext, "/job 3", true))
     {
+        CancelJobShift(playerid);
         gJob[playerid] = cmdtext[5] - '0';
         SaveUser(playerid);
-        SendClientMessage(playerid, C_GREEN, "Job selected. Type /work to earn money.");
-        return 1;
-    }
-    if (!strcmp(cmdtext, "/work", true))
-    {
-        if (!gJob[playerid]) { SendClientMessage(playerid, C_RED, "Select a job using /job 1, 2 or 3."); return 1; }
-        if (gLastWork[playerid] != 0 && gettime() - gLastWork[playerid] < WORK_DELAY)
-        {
-            SendClientMessage(playerid, C_RED, "You must wait before your next shift.");
-            return 1;
-        }
-        if (gMoney[playerid] > 99999000) { SendClientMessage(playerid, C_RED, "Cash limit reached."); return 1; }
-        gLastWork[playerid] = gettime();
-        SaveWorkCooldown(playerid);
-        SetCash(playerid, gMoney[playerid] + 350 + gJob[playerid] * 50);
-        SaveUser(playerid);
-        SendClientMessage(playerid, C_GREEN, "Work complete! Salary added to your account.");
+        SendClientMessage(playerid, C_GREEN, "Job selected. Use /jobgps to find the workplace.");
         return 1;
     }
     if (!strcmp(cmdtext, "/buycar", true))
