@@ -31,6 +31,7 @@ with tempfile.TemporaryDirectory() as tmp:
         conn.execute("CREATE TABLE work_cooldown (name TEXT PRIMARY KEY COLLATE NOCASE, last_work INTEGER)")
         conn.execute("CREATE TABLE job_progress (name TEXT PRIMARY KEY COLLATE NOCASE, shifts INTEGER, xp INTEGER)")
         conn.execute("INSERT INTO accounts VALUES ('Player_1',2500,1)")
+        conn.commit()  # End Python sqlite3 implicit transaction before explicit BEGIN.
         # SQL equivalent of successful shift completion in veltor_jobs.inc
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("UPDATE accounts SET money=?,job=? WHERE name=?", (2900, 1, "Player_1"))
