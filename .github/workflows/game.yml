@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Проверить локальную выдачу прав сотрудникам
         run: python3 Игра/tests/test_staff.py
+      - name: Проверить транзакции прогресса работ
+        run: python3 Игра/tests/test_job_storage.py
       - name: Install 32-bit compatibility libraries
         run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6-i386 libatomic1:i386 libstdc++6:i386 libgcc-s1:i386
       - name: Download official Pawn compiler and open.mp includes
@@ -87,13 +89,15 @@ jobs:
               raise SystemExit(f"Expected SQLite file missing: {db}")
           with sqlite3.connect(f"file:{db.resolve()}?mode=ro", uri=True) as conn:
               actual={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-              required={"accounts","work_cooldown","staff","mutes","reports","moderation_audit"}
+              required={"accounts","work_cooldown","job_progress","staff","mutes","reports","moderation_audit"}
               missing=required-actual
               if missing:
                   raise SystemExit(f"Missing moderation tables: {sorted(missing)}")
               columns={row[1] for row in conn.execute("PRAGMA table_info(reports)")}
               assert {"reporter","message","status","closed_by","created_at"}<=columns
-              print("PASS: SQLite accounts, jobs, reports, staff, mutes and audit tables initialized.")
+              job_columns={row[1] for row in conn.execute("PRAGMA table_info(job_progress)")}
+              assert {"name","shifts","xp"}<=job_columns
+              print("PASS: SQLite accounts, job progression, reports, staff, mutes and audit tables initialized.")
           PY
       - name: Upload compiled gamemode
         uses: actions/upload-artifact@v4
