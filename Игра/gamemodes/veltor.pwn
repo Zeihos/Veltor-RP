@@ -12,7 +12,6 @@
 #define START_X 1482.40
 #define START_Y -1745.80
 #define START_Z 13.55
-#define CAR_PRICE 15000
 #define WORK_DELAY 60
 #define AUTH_NONE 0
 #define AUTH_REGISTER 1
@@ -25,6 +24,11 @@ new gMoney[MAX_PLAYERS];
 new gJob[MAX_PLAYERS];
 new gOwnedCar[MAX_PLAYERS];
 new gCarId[MAX_PLAYERS];
+new bool:gCarLocked[MAX_PLAYERS];
+new Float:gCarParkX[MAX_PLAYERS];
+new Float:gCarParkY[MAX_PLAYERS];
+new Float:gCarParkZ[MAX_PLAYERS];
+new Float:gCarParkAngle[MAX_PLAYERS];
 new gLastWork[MAX_PLAYERS];
 new gJobXP[MAX_PLAYERS];
 new gJobShifts[MAX_PLAYERS];
@@ -50,6 +54,7 @@ stock bool:DigitsOnly(const value[])
 }
 #include "veltor_moderation.inc"
 #include "veltor_jobs.inc"
+#include "veltor_vehicles.inc"
 
 stock LoadWorkCooldown(playerid)
 {
@@ -120,6 +125,7 @@ stock InitPlayer(playerid)
     gJob[playerid] = 0;
     gOwnedCar[playerid] = 0;
     gCarId[playerid] = 0;
+    ResetVehicleParking(playerid);
     gLastWork[playerid] = 0;
     gJobXP[playerid] = 0;
     gJobShifts[playerid] = 0;
@@ -182,10 +188,17 @@ stock FinishAuth(playerid)
     LoadWorkCooldown(playerid);
     LoadJobProgress(playerid);
     LoadModeration(playerid);
+    if (!LoadOwnedVehicle(playerid))
+    {
+        SendClientMessage(playerid, C_RED, "Garage database unavailable. Please reconnect later.");
+        Kick(playerid);
+        return 0;
+    }
     gAuthed[playerid] = true;
     SetSpawnInfo(playerid, NO_TEAM, 60, START_X, START_Y, START_Z, 90.0, 0, 0, 0, 0, 0, 0);
     SpawnPlayer(playerid);
     SetCash(playerid, gMoney[playerid]);
+    SyncVehicleLocksForViewer(playerid);
     SendClientMessage(playerid, C_GREEN, "Welcome to VELTOR ROLEPLAY!");
     SendClientMessage(playerid, C_WHITE, "Commands: /help, /stats, /job, /work, /car, /buycar, /pay, /spawn, /report");
     return 1;
@@ -225,6 +238,12 @@ public OnGameModeInit()
         return 0;
     }
     db_free_result(r);
+    if (!InitVehicleDB())
+    {
+        print("[VELTOR] Cannot initialize player_vehicles table");
+        db_close(gDb);
+        return 0;
+    }
     if (!InitJobDB())
     {
         print("[VELTOR] Cannot initialize job_progress table");
@@ -280,6 +299,20 @@ public OnPlayerDisconnect(playerid, reason)
     gAuthToken[playerid] = 0;
     gStaff[playerid] = false;
     gMutedUntil[playerid] = 0;
+    return 1;
+}
+
+public OnPlayerStateChange(playerid, newstate, oldstate)
+{
+    #pragma unused oldstate
+    if (gAuthed[playerid]) OnPlayerVehicleStateChange(playerid, newstate);
+    return 1;
+}
+
+public OnVehicleDeath(vehicleid, killerid)
+{
+    #pragma unused killerid
+    OnOwnedVehicleDeath(vehicleid);
     return 1;
 }
 
@@ -443,11 +476,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (!gAuthed[playerid]) return 1;
     if (HandleModerationCommand(playerid, cmdtext)) return 1;
     if (HandleJobCommand(playerid, cmdtext)) return 1;
+    if (HandleVehicleCommand(playerid, cmdtext)) return 1;
     if (!strcmp(cmdtext, "/help", true))
     {
         SendClientMessage(playerid, C_ORANGE, "VELTOR RP | Commands");
         SendClientMessage(playerid, C_WHITE, "/stats /jobs /job 1-3 /jobgps /work /workstatus /cancelwork");
-        SendClientMessage(playerid, C_WHITE, "/me action /do description /b text /report message /ahelp (staff)");
+        SendClientMessage(playerid, C_WHITE, "/garage /buycar /car /carfind /park /carlock /carstore /carsell");
         return 1;
     }
     if (!strcmp(cmdtext, "/stats", true))
@@ -479,27 +513,6 @@ public OnPlayerCommandText(playerid, cmdtext[])
         gJob[playerid] = cmdtext[5] - '0';
         SaveUser(playerid);
         SendClientMessage(playerid, C_GREEN, "Job selected. Use /jobgps to find the workplace.");
-        return 1;
-    }
-    if (!strcmp(cmdtext, "/buycar", true))
-    {
-        if (gOwnedCar[playerid] != 0) { SendClientMessage(playerid, C_RED, "You already own a car."); return 1; }
-        if (gMoney[playerid] < CAR_PRICE) { SendClientMessage(playerid, C_RED, "Sultan costs $15000."); return 1; }
-        gOwnedCar[playerid] = 560;
-        SetCash(playerid, gMoney[playerid] - CAR_PRICE);
-        SaveUser(playerid);
-        SendClientMessage(playerid, C_GREEN, "You bought a Sultan. Use /car to spawn it.");
-        return 1;
-    }
-    if (!strcmp(cmdtext, "/car", true))
-    {
-        if (!gOwnedCar[playerid]) { SendClientMessage(playerid, C_RED, "Buy a car with /buycar first."); return 1; }
-        if (gCarId[playerid] != 0) DestroyVehicle(gCarId[playerid]);
-        new Float:x, Float:y, Float:z, Float:a;
-        GetPlayerPos(playerid, x, y, z);
-        GetPlayerFacingAngle(playerid, a);
-        gCarId[playerid] = CreateVehicle(gOwnedCar[playerid], x + 4.0, y, z + 0.5, a, 3, 3, -1);
-        SendClientMessage(playerid, C_GREEN, "Your personal vehicle is nearby.");
         return 1;
     }
     if (!strcmp(cmdtext, "/pay", true) || !strcmp(cmdtext, "/pay ", true))
