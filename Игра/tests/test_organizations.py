@@ -22,7 +22,7 @@ for phrase in (
     "CHECK(role IN (0,1))",
     "BEGIN IMMEDIATE TRANSACTION",
     "COMMIT", "ROLLBACK",
-    "OrgChangedOne()", "OrgOwnerMatches(orgid, gOrgInviter[playerid])",
+    "OrgChangedOne()", "OrgInviterAuthorized(orgid, gOrgInviter[playerid])",
     "OrgMemberCount(orgid)", "ORG_MEMBER_LIMIT",
     "now+ORG_INVITE_SECONDS", "ORG_INVITE_COOLDOWN",
     "gOrganization[playerid]", "IsMuted(playerid)",
