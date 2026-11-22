@@ -88,9 +88,11 @@ stock SaveUser(playerid)
 {
     if (!gAuthed[playerid] || !gDb) return 0;
     new sql[256];
+    // Balances and car ownership are persisted in their own atomic transactions.
+    // Disconnect must not overwrite the latest committed state with stale snapshots.
     format(sql, sizeof sql,
-        "UPDATE accounts SET money=%d,job=%d,car=%d WHERE name='%s'",
-        gMoney[playerid], gJob[playerid], gOwnedCar[playerid], gPlayerName[playerid]);
+        "UPDATE accounts SET job=%d WHERE name='%s'",
+        gJob[playerid], gPlayerName[playerid]);
     new DBResult:r = db_query(gDb, sql);
     if (!r)
     {

@@ -21,6 +21,15 @@ stock bool:VehicleSQL(const query[])
     return true;
 }
 
+stock bool:VehicleAffectedOne()
+{
+    new DBResult:r = db_query(gDb, "SELECT changes() AS affected");
+    if (!r) return false;
+    new count = db_num_rows(r) > 0 ? db_get_field_assoc_int(r, "affected") : 0;
+    db_free_result(r);
+    return count == 1;
+}
+
 stock bool:InitVehicleDB()
 {
     return VehicleSQL("CREATE TABLE IF NOT EXISTS player_vehicles (name TEXT PRIMARY KEY COLLATE NOCASE, model INTEGER NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL, angle REAL NOT NULL, locked INTEGER NOT NULL DEFAULT 1)");
@@ -142,9 +151,9 @@ stock bool:CommitCarPurchase(playerid)
     if (ok)
     {
         format(query, sizeof query,
-            "UPDATE accounts SET money=%d,car=560 WHERE name='%s'",
-            balance, gPlayerName[playerid]);
-        if (!VehicleSQL(query)) ok = false;
+            "UPDATE accounts SET money=%d,car=560 WHERE name='%s' AND money=%d AND car=0",
+            balance, gPlayerName[playerid], gMoney[playerid]);
+        if (!VehicleSQL(query) || !VehicleAffectedOne()) ok = false;
     }
 
     if (ok && VehicleSQL("COMMIT"))
@@ -166,14 +175,15 @@ stock bool:CommitCarResale(playerid)
 
     new bool:ok = true, query[220];
     format(query, sizeof query,
-        "DELETE FROM player_vehicles WHERE name='%s'", gPlayerName[playerid]);
-    if (!VehicleSQL(query)) ok = false;
+        "DELETE FROM player_vehicles WHERE name='%s' AND model=%d",
+        gPlayerName[playerid], gOwnedCar[playerid]);
+    if (!VehicleSQL(query) || !VehicleAffectedOne()) ok = false;
     if (ok)
     {
         format(query, sizeof query,
-            "UPDATE accounts SET money=%d,car=0 WHERE name='%s'",
-            balance, gPlayerName[playerid]);
-        if (!VehicleSQL(query)) ok = false;
+            "UPDATE accounts SET money=%d,car=0 WHERE name='%s' AND money=%d AND car=%d",
+            balance, gPlayerName[playerid], gMoney[playerid], gOwnedCar[playerid]);
+        if (!VehicleSQL(query) || !VehicleAffectedOne()) ok = false;
     }
     if (ok && VehicleSQL("COMMIT"))
     {

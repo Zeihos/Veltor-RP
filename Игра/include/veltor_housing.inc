@@ -298,7 +298,7 @@ stock HandleHousingCommand(playerid, const cmdtext[])
         format(query, sizeof query,
             "UPDATE houses SET locked=%d WHERE id=%d AND owner='%s'",
             locked, id, gPlayerName[playerid]);
-        if (!HouseExec(query))
+        if (!HouseExec(query) || !HouseAffectedOne())
         {
             SendClientMessage(playerid, C_RED, "Could not update lock.");
             return 1;

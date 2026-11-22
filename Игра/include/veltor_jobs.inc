@@ -25,6 +25,15 @@ stock bool:JobExec(const query[])
     return true;
 }
 
+stock bool:JobAffectedOne()
+{
+    new DBResult:r = db_query(gDb, "SELECT changes() AS affected");
+    if (!r) return false;
+    new count = db_num_rows(r) > 0 ? db_get_field_assoc_int(r, "affected") : 0;
+    db_free_result(r);
+    return count == 1;
+}
+
 stock bool:InitJobDB()
 {
     return JobExec("CREATE TABLE IF NOT EXISTS job_progress (name TEXT PRIMARY KEY COLLATE NOCASE, shifts INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL DEFAULT 0)");
@@ -92,9 +101,9 @@ stock bool:CommitJobReward(playerid, reward, now)
 
     new bool:ok = true, query[320];
     format(query, sizeof query,
-        "UPDATE accounts SET money=%d,job=%d WHERE name='%s'",
-        money, gJob[playerid], gPlayerName[playerid]);
-    if (!JobExec(query)) ok = false;
+        "UPDATE accounts SET money=%d,job=%d WHERE name='%s' AND money=%d",
+        money, gJob[playerid], gPlayerName[playerid], gMoney[playerid]);
+    if (!JobExec(query) || !JobAffectedOne()) ok = false;
 
     if (ok)
     {
