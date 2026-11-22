@@ -144,6 +144,7 @@ stock bool:OrgCreate(playerid, const name[])
             if (orgid < 1) ok = false;
         }
     }
+    if (ok && !OrgEnsureTreasury(orgid)) ok=false;
     if (ok)
     {
         format(query, sizeof query,
@@ -174,7 +175,7 @@ stock bool:OrgAcceptInvite(playerid)
     if (orgid <= 0 || gettime()>gOrgInviteUntil[playerid] ||
         gOrganization[playerid] != 0) return false;
     if (!OrgExec("BEGIN IMMEDIATE TRANSACTION")) return false;
-    new bool:ok = OrgOwnerMatches(orgid, gOrgInviter[playerid]);
+    new bool:ok = OrgInviterAuthorized(orgid, gOrgInviter[playerid]);
     new members = OrgMemberCount(orgid);
     if (members < 1 || members >= ORG_MEMBER_LIMIT) ok = false;
     if (ok)
@@ -199,15 +200,27 @@ stock bool:OrgAcceptInvite(playerid)
 
 stock bool:OrgLeave(playerid)
 {
-    if (gOrganization[playerid] == 0) return false;
-    // Leaders have role=1 and cannot leave without leadership transfer.
-    new query[220];
-    format(query, sizeof query,
-        "DELETE FROM organization_members WHERE player='%s' AND org_id=%d AND role=0",
-        gPlayerName[playerid], gOrganization[playerid]);
-    if (!OrgExec(query) || !OrgChangedOne()) return false;
-    gOrganization[playerid] = 0;
-    return true;
+    if (gOrganization[playerid]<=0 || OrgIsLeader(playerid)) return false;
+    if (!OrgExec("BEGIN IMMEDIATE TRANSACTION")) return false;
+    new query[240],bool:ok=true;
+    format(query,sizeof query,
+        "DELETE FROM organization_officers WHERE player='%s' AND org_id=%d",
+        gPlayerName[playerid],gOrganization[playerid]);
+    if (!OrgExec(query)) ok=false;
+    if (ok)
+    {
+        format(query,sizeof query,
+            "DELETE FROM organization_members WHERE player='%s' AND org_id=%d AND role=0",
+            gPlayerName[playerid],gOrganization[playerid]);
+        if (!OrgExec(query) || !OrgChangedOne()) ok=false;
+    }
+    if (ok && OrgExec("COMMIT"))
+    {
+        gOrganization[playerid]=0;
+        return true;
+    }
+    OrgExec("ROLLBACK");
+    return false;
 }
 
 stock bool:OrgTransferLeader(playerid, target)
@@ -236,6 +249,13 @@ stock bool:OrgTransferLeader(playerid, target)
             gPlayerName[target], orgid);
         if (!OrgExec(query) || !OrgChangedOne()) ok = false;
     }
+    if (ok)
+    {
+        format(query,sizeof query,
+            "DELETE FROM organization_officers WHERE player='%s' AND org_id=%d",
+            gPlayerName[target],orgid);
+        if (!OrgExec(query)) ok=false;
+    }
     if (ok && OrgExec("COMMIT")) return true;
     OrgExec("ROLLBACK");
     return false;
@@ -244,24 +264,36 @@ stock bool:OrgTransferLeader(playerid, target)
 stock bool:OrgDisband(playerid)
 {
     if (!OrgIsLeader(playerid)) return false;
-    new orgid = gOrganization[playerid];
-    if (OrgMemberCount(orgid) != 1) return false;
+    new orgid=gOrganization[playerid];
+    if (OrgMemberCount(orgid)!=1 || OrgTreasuryBalance(orgid)!=0) return false;
     if (!OrgExec("BEGIN IMMEDIATE TRANSACTION")) return false;
-    new query[250], bool:ok = true;
-    format(query, sizeof query,
-        "DELETE FROM organization_members WHERE org_id=%d AND player='%s' AND role=1",
-        orgid, gPlayerName[playerid]);
-    if (!OrgExec(query) || !OrgChangedOne()) ok = false;
+    new query[260],bool:ok=true;
+    format(query,sizeof query,
+        "DELETE FROM organization_treasury WHERE org_id=%d AND balance=0",orgid);
+    if (!OrgExec(query) || !OrgChangedOne()) ok=false;
     if (ok)
     {
-        format(query, sizeof query,
+        format(query,sizeof query,
+            "DELETE FROM organization_officers WHERE org_id=%d",orgid);
+        if (!OrgExec(query)) ok=false;
+    }
+    if (ok)
+    {
+        format(query,sizeof query,
+            "DELETE FROM organization_members WHERE org_id=%d AND player='%s' AND role=1",
+            orgid,gPlayerName[playerid]);
+        if (!OrgExec(query) || !OrgChangedOne()) ok=false;
+    }
+    if (ok)
+    {
+        format(query,sizeof query,
             "DELETE FROM organizations WHERE id=%d AND owner='%s'",
-            orgid, gPlayerName[playerid]);
-        if (!OrgExec(query) || !OrgChangedOne()) ok = false;
+            orgid,gPlayerName[playerid]);
+        if (!OrgExec(query) || !OrgChangedOne()) ok=false;
     }
     if (ok && OrgExec("COMMIT"))
     {
-        gOrganization[playerid] = 0;
+        gOrganization[playerid]=0;
         return true;
     }
     OrgExec("ROLLBACK");
@@ -301,7 +333,7 @@ stock OrgShowMembers(playerid)
     if (gOrganization[playerid]==0) return OrgShowInfo(playerid);
     new query[180];
     format(query, sizeof query,
-        "SELECT player,role FROM organization_members WHERE org_id=%d ORDER BY role DESC,player ASC LIMIT 10",
+        "SELECT m.player,m.role,(SELECT COUNT(*) FROM organization_officers o WHERE o.player=m.player AND o.org_id=m.org_id) AS officer FROM organization_members m WHERE m.org_id=%d ORDER BY m.role DESC,m.player ASC LIMIT 10",
         gOrganization[playerid]);
     new DBResult:r = db_query(gDb, query);
     if (!r)
@@ -315,8 +347,10 @@ stock OrgShowMembers(playerid)
     {
         new name[MAX_PLAYER_NAME+1], message[110];
         db_get_field_assoc(r, "player", name, sizeof name);
-        format(message, sizeof message, "%s | %s", name,
-            db_get_field_assoc_int(r, "role")==1 ? ("Leader"):("Member"));
+        new role=db_get_field_assoc_int(r,"role");
+        new deputy=db_get_field_assoc_int(r,"officer");
+        format(message,sizeof message,"%s | %s",name,
+            role==1 ? ("Leader"):(deputy>0 ? ("Deputy"):("Member")));
         SendClientMessage(playerid, C_WHITE, message);
         db_next_row(r);
     }
@@ -373,6 +407,10 @@ stock HandleOrganizationCommand(playerid, const cmdtext[])
             "/org invite ID | /org accept | /org decline | /org leave");
         SendClientMessage(playerid, C_WHITE,
             "/org transfer ID | /org disband CONFIRM | /oc message");
+        SendClientMessage(playerid,C_WHITE,
+            "/org treasury /org deposit /org withdraw /org ledger");
+        SendClientMessage(playerid,C_WHITE,
+            "/org promote ID /org demote ID /org kick ID");
         return 1;
     }
     if (!strcmp(cmdtext, "/org create ", true, 12))
@@ -396,9 +434,9 @@ stock HandleOrganizationCommand(playerid, const cmdtext[])
     if (!strcmp(cmdtext, "/org members", true)) return OrgShowMembers(playerid);
     if (!strcmp(cmdtext, "/org invite ", true, 12))
     {
-        if (!OrgIsLeader(playerid))
+        if (!OrgCanManage(playerid))
         {
-            SendClientMessage(playerid, C_RED, "Only organization leader can invite.");
+            SendClientMessage(playerid, C_RED, "Only leaders and deputies can invite.");
             return 1;
         }
         new targetText[14], target;

@@ -50,6 +50,7 @@ new gLastItemGive[MAX_PLAYERS];
 new gOrganization[MAX_PLAYERS];
 new gOrgInvite[MAX_PLAYERS];
 new gOrgInviteUntil[MAX_PLAYERS];
+new gLastOrgTreasury[MAX_PLAYERS];
 new gLastOrgInvite[MAX_PLAYERS];
 new gOrgInviter[MAX_PLAYERS][MAX_PLAYER_NAME+1];
 new gPlayerName[MAX_PLAYERS][MAX_PLAYER_NAME + 1];
@@ -68,6 +69,7 @@ stock bool:DigitsOnly(const value[])
 #include "veltor_housing.inc"
 #include "veltor_inventory.inc"
 #include "veltor_organizations.inc"
+#include "veltor_org_management.inc"
 
 stock LoadWorkCooldown(playerid)
 {
@@ -161,6 +163,7 @@ stock InitPlayer(playerid)
     gOrganization[playerid] = 0;
     gOrgInvite[playerid] = 0;
     gOrgInviteUntil[playerid] = 0;
+    gLastOrgTreasury[playerid] = 0;
     gLastOrgInvite[playerid] = 0;
     gOrgInviter[playerid][0] = EOS;
     GetPlayerName(playerid, gPlayerName[playerid], MAX_PLAYER_NAME + 1);
@@ -280,9 +283,9 @@ public OnGameModeInit()
         return 0;
     }
     db_free_result(r);
-    if (!InitOrganizationDB())
+    if (!InitOrganizationDB() || !OrgManagementInit())
     {
-        print("[VELTOR] Cannot initialize organization tables");
+        print("[VELTOR] Cannot initialize organizations, deputies or treasury");
         db_close(gDb);
         return 0;
     }
@@ -548,6 +551,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (HandleBankCommand(playerid, cmdtext)) return 1;
     if (HandleHousingCommand(playerid, cmdtext)) return 1;
     if (HandleInventoryCommand(playerid, cmdtext)) return 1;
+    if (HandleOrgManagementCommand(playerid, cmdtext)) return 1;
     if (HandleOrganizationCommand(playerid, cmdtext)) return 1;
     if (!strcmp(cmdtext, "/help", true))
     {
