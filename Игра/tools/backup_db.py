@@ -23,9 +23,12 @@ DEFAULT_OUTPUT = ROOT / "server" / "backups"
 
 
 def backup_database(source: Path, output: Path, retain: int = 7) -> Path:
-    source = source.expanduser().resolve(strict=True)
-    if not source.is_file() or source.is_symlink():
-        raise ValueError("Источник должен быть существующей базой SQLite, не символической ссылкой.")
+    source = source.expanduser()
+    if source.is_symlink():
+        raise ValueError("Символические ссылки на базу данных не поддерживаются.")
+    source = source.resolve(strict=True)
+    if not source.is_file():
+        raise ValueError("Источник должен быть существующей базой SQLite.")
     if not 1 <= retain <= 365:
         raise ValueError("Параметр --retain должен быть в пределах от 1 до 365.")
     output = output.expanduser()
