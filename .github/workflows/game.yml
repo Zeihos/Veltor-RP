@@ -24,6 +24,8 @@ jobs:
         run: python3 Игра/tests/test_vehicles.py
       - name: Проверить банк и недвижимость
         run: python3 Игра/tests/test_finance_housing.py
+      - name: Проверить резервное копирование SQLite
+        run: python3 Игра/tests/test_backup_db.py
       - name: Install 32-bit compatibility libraries
         run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6-i386 libatomic1:i386 libstdc++6:i386 libgcc-s1:i386
       - name: Download official Pawn compiler and open.mp includes
