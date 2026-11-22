@@ -47,6 +47,11 @@ new gMutedUntil[MAX_PLAYERS];
 new gLastReport[MAX_PLAYERS];
 new gLastChat[MAX_PLAYERS];
 new gLastItemGive[MAX_PLAYERS];
+new gOrganization[MAX_PLAYERS];
+new gOrgInvite[MAX_PLAYERS];
+new gOrgInviteUntil[MAX_PLAYERS];
+new gLastOrgInvite[MAX_PLAYERS];
+new gOrgInviter[MAX_PLAYERS][MAX_PLAYER_NAME+1];
 new gPlayerName[MAX_PLAYERS][MAX_PLAYER_NAME + 1];
 
 stock bool:DigitsOnly(const value[])
@@ -62,6 +67,7 @@ stock bool:DigitsOnly(const value[])
 #include "veltor_bank.inc"
 #include "veltor_housing.inc"
 #include "veltor_inventory.inc"
+#include "veltor_organizations.inc"
 
 stock LoadWorkCooldown(playerid)
 {
@@ -152,6 +158,11 @@ stock InitPlayer(playerid)
     gLastReport[playerid] = 0;
     gLastChat[playerid] = 0;
     gLastItemGive[playerid] = 0;
+    gOrganization[playerid] = 0;
+    gOrgInvite[playerid] = 0;
+    gOrgInviteUntil[playerid] = 0;
+    gLastOrgInvite[playerid] = 0;
+    gOrgInviter[playerid][0] = EOS;
     GetPlayerName(playerid, gPlayerName[playerid], MAX_PLAYER_NAME + 1);
     return 1;
 }
@@ -201,6 +212,12 @@ stock FinishAuth(playerid)
     LoadWorkCooldown(playerid);
     LoadJobProgress(playerid);
     LoadModeration(playerid);
+    if (!OrgLoadMember(playerid))
+    {
+        SendClientMessage(playerid, C_RED, "Organization database unavailable. Please reconnect later.");
+        Kick(playerid);
+        return 0;
+    }
     if (!LoadHouse(playerid))
     {
         SendClientMessage(playerid, C_RED, "Housing database unavailable. Please reconnect later.");
@@ -263,6 +280,12 @@ public OnGameModeInit()
         return 0;
     }
     db_free_result(r);
+    if (!InitOrganizationDB())
+    {
+        print("[VELTOR] Cannot initialize organization tables");
+        db_close(gDb);
+        return 0;
+    }
     if (!InitInventoryDB())
     {
         print("[VELTOR] Cannot initialize player inventory tables");
@@ -525,11 +548,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (HandleBankCommand(playerid, cmdtext)) return 1;
     if (HandleHousingCommand(playerid, cmdtext)) return 1;
     if (HandleInventoryCommand(playerid, cmdtext)) return 1;
+    if (HandleOrganizationCommand(playerid, cmdtext)) return 1;
     if (!strcmp(cmdtext, "/help", true))
     {
         SendClientMessage(playerid, C_ORANGE, "VELTOR RP | Commands");
         SendClientMessage(playerid, C_WHITE, "/stats /jobs /job 1-3 /jobgps /work /workstatus /cancelwork");
-        SendClientMessage(playerid, C_WHITE, "/garage /bank /houses /inventory /shop /buyitem /useitem");
+        SendClientMessage(playerid, C_WHITE, "/garage /bank /houses /inventory /org /oc message");
         return 1;
     }
     if (!strcmp(cmdtext, "/stats", true))
