@@ -302,7 +302,7 @@ public OnPlayerDisconnect(playerid, reason)
     return 1;
 }
 
-public OnPlayerStateChange(playerid, newstate, oldstate)
+public OnPlayerStateChange(playerid, PLAYER_STATE:newstate, PLAYER_STATE:oldstate)
 {
     #pragma unused oldstate
     if (gAuthed[playerid]) OnPlayerVehicleStateChange(playerid, newstate);
