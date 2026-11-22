@@ -21,6 +21,7 @@
 new DB:gDb;
 new bool:gAuthed[MAX_PLAYERS];
 new gMoney[MAX_PLAYERS];
+new gBankBalance[MAX_PLAYERS];
 new gJob[MAX_PLAYERS];
 new gOwnedCar[MAX_PLAYERS];
 new gCarId[MAX_PLAYERS];
@@ -55,6 +56,7 @@ stock bool:DigitsOnly(const value[])
 #include "veltor_moderation.inc"
 #include "veltor_jobs.inc"
 #include "veltor_vehicles.inc"
+#include "veltor_bank.inc"
 
 stock LoadWorkCooldown(playerid)
 {
@@ -122,6 +124,7 @@ stock InitPlayer(playerid)
 {
     gAuthed[playerid] = false;
     gMoney[playerid] = 0;
+    gBankBalance[playerid] = 0;
     gJob[playerid] = 0;
     gOwnedCar[playerid] = 0;
     gCarId[playerid] = 0;
@@ -188,6 +191,12 @@ stock FinishAuth(playerid)
     LoadWorkCooldown(playerid);
     LoadJobProgress(playerid);
     LoadModeration(playerid);
+    if (!LoadBank(playerid))
+    {
+        SendClientMessage(playerid, C_RED, "Bank account unavailable. Please reconnect later.");
+        Kick(playerid);
+        return 0;
+    }
     if (!LoadOwnedVehicle(playerid))
     {
         SendClientMessage(playerid, C_RED, "Garage database unavailable. Please reconnect later.");
@@ -238,6 +247,12 @@ public OnGameModeInit()
         return 0;
     }
     db_free_result(r);
+    if (!InitBankDB())
+    {
+        print("[VELTOR] Cannot initialize bank tables");
+        db_close(gDb);
+        return 0;
+    }
     if (!InitVehicleDB())
     {
         print("[VELTOR] Cannot initialize player_vehicles table");
@@ -477,11 +492,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (HandleModerationCommand(playerid, cmdtext)) return 1;
     if (HandleJobCommand(playerid, cmdtext)) return 1;
     if (HandleVehicleCommand(playerid, cmdtext)) return 1;
+    if (HandleBankCommand(playerid, cmdtext)) return 1;
     if (!strcmp(cmdtext, "/help", true))
     {
         SendClientMessage(playerid, C_ORANGE, "VELTOR RP | Commands");
         SendClientMessage(playerid, C_WHITE, "/stats /jobs /job 1-3 /jobgps /work /workstatus /cancelwork");
-        SendClientMessage(playerid, C_WHITE, "/garage /buycar /car /carfind /park /carlock /carstore /carsell");
+        SendClientMessage(playerid, C_WHITE, "/garage /car /park /carsell /bank /atm /deposit /withdraw");
         return 1;
     }
     if (!strcmp(cmdtext, "/stats", true))
