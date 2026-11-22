@@ -34,6 +34,8 @@ stock bool:InitBankDB()
         return false;
     if (!BankExec("CREATE TABLE IF NOT EXISTS bank_history (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, action TEXT NOT NULL, amount INTEGER NOT NULL, created_at INTEGER NOT NULL)"))
         return false;
+    if (!BankExec("CREATE TABLE IF NOT EXISTS cash_transfers (id INTEGER PRIMARY KEY AUTOINCREMENT, sender TEXT NOT NULL, receiver TEXT NOT NULL, amount INTEGER NOT NULL, created_at INTEGER NOT NULL)"))
+        return false;
     return true;
 }
 
@@ -116,6 +118,47 @@ stock bool:CommitBankOperation(playerid, bool:deposit, amount)
     {
         gBankBalance[playerid] = newBalance;
         SetCash(playerid, newCash);
+        return true;
+    }
+    BankExec("ROLLBACK");
+    return false;
+}
+
+stock bool:CommitCashTransfer(sender, recipient, amount)
+{
+    if (sender == recipient || !gAuthed[sender] || !gAuthed[recipient] ||
+        amount < 1 || amount > BANK_ACTION_LIMIT ||
+        amount > gMoney[sender] || gMoney[recipient] > BANK_LIMIT - amount)
+        return false;
+
+    new senderBalance = gMoney[sender] - amount;
+    new receiverBalance = gMoney[recipient] + amount;
+    if (!BankExec("BEGIN IMMEDIATE TRANSACTION")) return false;
+
+    new bool:ok = true, query[340];
+    format(query, sizeof query,
+        "UPDATE accounts SET money=%d WHERE name='%s' AND money=%d",
+        senderBalance, gPlayerName[sender], gMoney[sender]);
+    if (!BankExec(query) || !BankUpdatedOneRow()) ok = false;
+
+    if (ok)
+    {
+        format(query, sizeof query,
+            "UPDATE accounts SET money=%d WHERE name='%s' AND money=%d",
+            receiverBalance, gPlayerName[recipient], gMoney[recipient]);
+        if (!BankExec(query) || !BankUpdatedOneRow()) ok = false;
+    }
+    if (ok)
+    {
+        format(query, sizeof query,
+            "INSERT INTO cash_transfers(sender,receiver,amount,created_at) VALUES('%s','%s',%d,%d)",
+            gPlayerName[sender],gPlayerName[recipient],amount,gettime());
+        if (!BankExec(query)) ok = false;
+    }
+    if (ok && BankExec("COMMIT"))
+    {
+        SetCash(sender, senderBalance);
+        SetCash(recipient, receiverBalance);
         return true;
     }
     BankExec("ROLLBACK");

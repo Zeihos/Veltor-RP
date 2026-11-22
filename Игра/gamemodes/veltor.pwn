@@ -578,9 +578,11 @@ public OnPlayerCommandText(playerid, cmdtext[])
             SendClientMessage(playerid, C_RED, "Invalid recipient or amount (maximum $50000).");
             return 1;
         }
-        SetCash(playerid, gMoney[playerid] - amount);
-        SetCash(target, gMoney[target] + amount);
-        SaveUser(playerid); SaveUser(target);
+        if (!CommitCashTransfer(playerid, target, amount))
+        {
+            SendClientMessage(playerid, C_RED, "Transfer could not be saved. No cash was moved.");
+            return 1;
+        }
         SendClientMessage(playerid, C_GREEN, "Transfer completed.");
         SendClientMessage(target, C_GREEN, "You received a player-to-player transfer.");
         return 1;
