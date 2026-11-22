@@ -331,7 +331,7 @@ stock OrgShowInfo(playerid)
 stock OrgShowMembers(playerid)
 {
     if (gOrganization[playerid]==0) return OrgShowInfo(playerid);
-    new query[180];
+    new query[380];
     format(query, sizeof query,
         "SELECT m.player,m.role,(SELECT COUNT(*) FROM organization_officers o WHERE o.player=m.player AND o.org_id=m.org_id) AS officer FROM organization_members m WHERE m.org_id=%d ORDER BY m.role DESC,m.player ASC LIMIT 10",
         gOrganization[playerid]);
