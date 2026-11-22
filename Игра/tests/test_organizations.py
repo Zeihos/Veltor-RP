@@ -26,7 +26,7 @@ for phrase in (
     "OrgMemberCount(orgid)", "ORG_MEMBER_LIMIT",
     "now+ORG_INVITE_SECONDS", "ORG_INVITE_COOLDOWN",
     "gOrganization[playerid]", "IsMuted(playerid)",
-    "GetPlayerState", "UPDATE accounts SET money=",
+    "ORG_CHAT_COOLDOWN", "UPDATE accounts SET money=",
     "DELETE FROM organization_members WHERE player=",
     "DELETE FROM organizations WHERE id=",
     "role=1", "role=0",
