@@ -28,6 +28,8 @@ jobs:
         run: python3 Игра/tests/test_backup_db.py
       - name: Проверить инвентарь и списание предметов
         run: python3 Игра/tests/test_inventory.py
+      - name: Проверить безопасную передачу предметов
+        run: python3 Игра/tests/test_item_transfer.py
       - name: Install 32-bit compatibility libraries
         run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6-i386 libatomic1:i386 libstdc++6:i386 libgcc-s1:i386
       - name: Download official Pawn compiler and open.mp includes
@@ -97,7 +99,7 @@ jobs:
               raise SystemExit(f"Expected SQLite file missing: {db}")
           with sqlite3.connect(f"file:{db.resolve()}?mode=ro", uri=True) as conn:
               actual={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-              required={"accounts","work_cooldown","job_progress","player_vehicles","bank_accounts","bank_history","cash_transfers","houses","player_items","inventory_events","staff","mutes","reports","moderation_audit"}
+              required={"accounts","work_cooldown","job_progress","player_vehicles","bank_accounts","bank_history","cash_transfers","houses","player_items","inventory_events","item_transfers","staff","mutes","reports","moderation_audit"}
               missing=required-actual
               if missing:
                   raise SystemExit(f"Missing moderation tables: {sorted(missing)}")
@@ -115,6 +117,8 @@ jobs:
               assert count==3, f"Expected 3 starter houses, got {count}"
               item_columns={r[1] for r in conn.execute("PRAGMA table_info(player_items)")}
               assert {"name","item_id","quantity"}<=item_columns
+              transfer_columns={r[1] for r in conn.execute("PRAGMA table_info(item_transfers)")}
+              assert {"sender","receiver","item_id","quantity","created_at"}<=transfer_columns
               print("PASS: SQLite inventory, bank, housing, jobs, garage and moderation tables initialized.")
           PY
       - name: Upload compiled gamemode
