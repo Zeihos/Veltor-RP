@@ -22,6 +22,8 @@ new DB:gDb;
 new bool:gAuthed[MAX_PLAYERS];
 new gMoney[MAX_PLAYERS];
 new gBankBalance[MAX_PLAYERS];
+new gOwnedHouse[MAX_PLAYERS];
+new gInsideHouse[MAX_PLAYERS];
 new gJob[MAX_PLAYERS];
 new gOwnedCar[MAX_PLAYERS];
 new gCarId[MAX_PLAYERS];
@@ -57,6 +59,7 @@ stock bool:DigitsOnly(const value[])
 #include "veltor_jobs.inc"
 #include "veltor_vehicles.inc"
 #include "veltor_bank.inc"
+#include "veltor_housing.inc"
 
 stock LoadWorkCooldown(playerid)
 {
@@ -125,6 +128,8 @@ stock InitPlayer(playerid)
     gAuthed[playerid] = false;
     gMoney[playerid] = 0;
     gBankBalance[playerid] = 0;
+    gOwnedHouse[playerid] = 0;
+    gInsideHouse[playerid] = 0;
     gJob[playerid] = 0;
     gOwnedCar[playerid] = 0;
     gCarId[playerid] = 0;
@@ -191,6 +196,12 @@ stock FinishAuth(playerid)
     LoadWorkCooldown(playerid);
     LoadJobProgress(playerid);
     LoadModeration(playerid);
+    if (!LoadHouse(playerid))
+    {
+        SendClientMessage(playerid, C_RED, "Housing database unavailable. Please reconnect later.");
+        Kick(playerid);
+        return 0;
+    }
     if (!LoadBank(playerid))
     {
         SendClientMessage(playerid, C_RED, "Bank account unavailable. Please reconnect later.");
@@ -247,6 +258,12 @@ public OnGameModeInit()
         return 0;
     }
     db_free_result(r);
+    if (!InitHousingDB())
+    {
+        print("[VELTOR] Cannot initialize house catalog");
+        db_close(gDb);
+        return 0;
+    }
     if (!InitBankDB())
     {
         print("[VELTOR] Cannot initialize bank tables");
@@ -307,6 +324,7 @@ public OnPlayerDisconnect(playerid, reason)
     #pragma unused reason
     SaveUser(playerid);
     CancelJobShift(playerid);
+    gInsideHouse[playerid] = 0;
     if (gCarId[playerid] != 0) DestroyVehicle(gCarId[playerid]);
     gCarId[playerid] = 0;
     gAuthed[playerid] = false;
@@ -350,6 +368,7 @@ public OnPlayerDeath(playerid, killerid, WEAPON:reason)
 {
     #pragma unused killerid, reason
     if (gAuthed[playerid]) CancelJobShift(playerid);
+    gInsideHouse[playerid] = 0;
     return 1;
 }
 
@@ -493,11 +512,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (HandleJobCommand(playerid, cmdtext)) return 1;
     if (HandleVehicleCommand(playerid, cmdtext)) return 1;
     if (HandleBankCommand(playerid, cmdtext)) return 1;
+    if (HandleHousingCommand(playerid, cmdtext)) return 1;
     if (!strcmp(cmdtext, "/help", true))
     {
         SendClientMessage(playerid, C_ORANGE, "VELTOR RP | Commands");
         SendClientMessage(playerid, C_WHITE, "/stats /jobs /job 1-3 /jobgps /work /workstatus /cancelwork");
-        SendClientMessage(playerid, C_WHITE, "/garage /car /park /carsell /bank /atm /deposit /withdraw");
+        SendClientMessage(playerid, C_WHITE, "/garage /car /park /bank /atm /deposit /withdraw /houses /home");
         return 1;
     }
     if (!strcmp(cmdtext, "/stats", true))
@@ -511,6 +531,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (!strcmp(cmdtext, "/spawn", true))
     {
         CancelJobShift(playerid);
+        gInsideHouse[playerid] = 0;
         if (IsPlayerInAnyVehicle(playerid)) RemovePlayerFromVehicle(playerid);
         SetPlayerInterior(playerid, 0);
         SetPlayerVirtualWorld(playerid, 0);
