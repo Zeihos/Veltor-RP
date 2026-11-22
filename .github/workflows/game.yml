@@ -1,0 +1,141 @@
+name: Игровая сборка · open.mp
+on:
+  push:
+    paths:
+      - 'Игра/**'
+      - '.github/workflows/game.yml'
+  pull_request:
+    paths:
+      - 'Игра/**'
+      - '.github/workflows/game.yml'
+permissions:
+  contents: read
+
+jobs:
+  pawn:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Проверить локальную выдачу прав сотрудникам
+        run: python3 Игра/tests/test_staff.py
+      - name: Проверить транзакции прогресса работ
+        run: python3 Игра/tests/test_job_storage.py
+      - name: Проверить гараж и сделки с транспортом
+        run: python3 Игра/tests/test_vehicles.py
+      - name: Проверить банк и недвижимость
+        run: python3 Игра/tests/test_finance_housing.py
+      - name: Проверить резервное копирование SQLite
+        run: python3 Игра/tests/test_backup_db.py
+      - name: Проверить инвентарь и списание предметов
+        run: python3 Игра/tests/test_inventory.py
+      - name: Проверить безопасную передачу предметов
+        run: python3 Игра/tests/test_item_transfer.py
+      - name: Проверить организации и права руководства
+        run: python3 Игра/tests/test_organizations.py
+      - name: Проверить казну и заместителей организаций
+        run: python3 Игра/tests/test_org_treasury.py
+      - name: Install 32-bit compatibility libraries
+        run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y libc6-i386 libatomic1:i386 libstdc++6:i386 libgcc-s1:i386
+      - name: Download official Pawn compiler and open.mp includes
+        run: |
+          mkdir -p .ci/compiler .ci/server
+          curl -fL --retry 3 -o .ci/pawnc.tar.gz https://github.com/openmultiplayer/compiler/releases/download/v3.10.11/pawnc-3.10.11-linux.tar.gz
+          curl -fL --retry 3 -o .ci/openmp.tar.gz https://github.com/openmultiplayer/open.mp/releases/download/v1.6.7.3218/open.mp-linux-x86.tar.gz
+          tar -xzf .ci/pawnc.tar.gz -C .ci/compiler
+          tar -xzf .ci/openmp.tar.gz -C .ci/server
+      - name: Compile gamemode
+        run: |
+          COMPILER="$(find "$PWD/.ci/compiler" -type f -name pawncc | head -n 1)"
+          INCLUDE="$(find "$PWD/.ci/server" -type f -name open.mp.inc | head -n 1)"
+          test -n "$COMPILER" && test -n "$INCLUDE"
+          chmod +x "$COMPILER"
+          mkdir -p "$PWD/.ci/out"
+          cd "$(dirname "$COMPILER")"
+          LIBPAWNC="$(find "$GITHUB_WORKSPACE/.ci/compiler" -type f -name 'libpawnc.so*' | head -n 1)"
+          test -n "$LIBPAWNC"
+          export LD_LIBRARY_PATH="$(dirname "$LIBPAWNC"):${LD_LIBRARY_PATH:-}"
+          "./$(basename "$COMPILER")" "$GITHUB_WORKSPACE/Игра/gamemodes/veltor.pwn" "-i$(dirname "$INCLUDE")" "-i$GITHUB_WORKSPACE/Игра/include" "-o$GITHUB_WORKSPACE/.ci/out/veltor.amx" -Z
+          test -s "$GITHUB_WORKSPACE/.ci/out/veltor.amx"
+      - name: Download pinned Linux bcrypt plugin
+        run: |
+          mkdir -p .ci/bcrypt
+          curl -fL --retry 3 -o .ci/bcrypt.zip https://github.com/Sreyas-Sreelal/samp-bcrypt/releases/download/0.4.1/samp-bcrypt-linux-x86.zip
+          unzip -oq .ci/bcrypt.zip -d .ci/bcrypt
+          find .ci/bcrypt -type f
+          test -n "$(find .ci/bcrypt -type f -name '*bcrypt*.so' -print -quit)"
+      - name: Local server boot smoke test
+        run: |
+          set -euo pipefail
+          EXE="$(find "$PWD/.ci/server" -type f -name omp-server | head -n 1)"
+          PLUGIN="$(find "$PWD/.ci/bcrypt" -type f -name '*bcrypt*.so' | head -n 1)"
+          test -n "$EXE" && test -n "$PLUGIN"
+          ROOT="$(dirname "$EXE")"
+          mkdir -p "$ROOT/plugins" "$ROOT/gamemodes" "$ROOT/scriptfiles"
+          cp "$PLUGIN" "$ROOT/plugins/samp_bcrypt.so"
+          cp .ci/out/veltor.amx "$ROOT/gamemodes/veltor.amx"
+          python3 - "$ROOT/config.json" <<'PY'
+          import json,sys
+          config={
+              "name":"VELTOR ROLEPLAY | CI TEST",
+              "language":"Russian",
+              "announce":False,
+              "max_players":5,
+              "network":{"bind":"127.0.0.1","port":7788},
+              "pawn":{"main_scripts":["veltor 1"],"side_scripts":[],"legacy_plugins":["samp_bcrypt"]},
+              "rcon":{"enable":False}
+          }
+          with open(sys.argv[1],"w",encoding="utf-8") as fh:
+              json.dump(config,fh)
+          PY
+          chmod +x "$EXE"
+          set +e
+          (cd "$ROOT" && timeout 10s ./omp-server) > .ci/server-boot.log 2>&1
+          rc=$?
+          set -e
+          cat .ci/server-boot.log
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then exit "$rc"; fi
+          grep -F "[VELTOR] Clean SQLite account system ready" .ci/server-boot.log
+          python3 - "$ROOT/scriptfiles/veltor.db" <<'PY'
+          import sqlite3,sys
+          from pathlib import Path
+          db=Path(sys.argv[1])
+          if not db.is_file():
+              raise SystemExit(f"Expected SQLite file missing: {db}")
+          with sqlite3.connect(f"file:{db.resolve()}?mode=ro", uri=True) as conn:
+              actual={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+              required={"accounts","work_cooldown","job_progress","player_vehicles","bank_accounts","bank_history","cash_transfers","houses","player_items","inventory_events","item_transfers","organizations","organization_members","organization_officers","organization_treasury","organization_treasury_history","staff","mutes","reports","moderation_audit"}
+              missing=required-actual
+              if missing:
+                  raise SystemExit(f"Missing moderation tables: {sorted(missing)}")
+              columns={row[1] for row in conn.execute("PRAGMA table_info(reports)")}
+              assert {"reporter","message","status","closed_by","created_at"}<=columns
+              job_columns={row[1] for row in conn.execute("PRAGMA table_info(job_progress)")}
+              assert {"name","shifts","xp"}<=job_columns
+              car_columns={row[1] for row in conn.execute("PRAGMA table_info(player_vehicles)")}
+              assert {"name","model","x","y","z","angle","locked"}<=car_columns
+              bank_columns={r[1] for r in conn.execute("PRAGMA table_info(bank_accounts)")}
+              assert {"name","balance"}<=bank_columns
+              house_columns={r[1] for r in conn.execute("PRAGMA table_info(houses)")}
+              assert {"id","price","owner","locked","purchased_at"}<=house_columns
+              count=conn.execute("SELECT COUNT(*) FROM houses").fetchone()[0]
+              assert count==3, f"Expected 3 starter houses, got {count}"
+              item_columns={r[1] for r in conn.execute("PRAGMA table_info(player_items)")}
+              assert {"name","item_id","quantity"}<=item_columns
+              transfer_columns={r[1] for r in conn.execute("PRAGMA table_info(item_transfers)")}
+              assert {"sender","receiver","item_id","quantity","created_at"}<=transfer_columns
+              org_columns={r[1] for r in conn.execute("PRAGMA table_info(organizations)")}
+              assert {"id","name","owner","created_at"}<=org_columns
+              member_columns={r[1] for r in conn.execute("PRAGMA table_info(organization_members)")}
+              assert {"player","org_id","role","joined_at"}<=member_columns
+              treasury_columns={r[1] for r in conn.execute("PRAGMA table_info(organization_treasury)")}
+              assert {"org_id","balance"}<=treasury_columns
+              officer_columns={r[1] for r in conn.execute("PRAGMA table_info(organization_officers)")}
+              assert {"player","org_id","appointed_at"}<=officer_columns
+              print("PASS: SQLite inventory, bank, housing, jobs, garage and moderation tables initialized.")
+          PY
+      - name: Upload compiled gamemode
+        uses: actions/upload-artifact@v4
+        with:
+          name: veltor-gamemode-amx
+          path: .ci/out/veltor.amx
+          retention-days: 14
