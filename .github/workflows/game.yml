@@ -93,7 +93,7 @@ jobs:
               raise SystemExit(f"Expected SQLite file missing: {db}")
           with sqlite3.connect(f"file:{db.resolve()}?mode=ro", uri=True) as conn:
               actual={r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-              required={"accounts","work_cooldown","job_progress","player_vehicles","bank_accounts","bank_history","houses","staff","mutes","reports","moderation_audit"}
+              required={"accounts","work_cooldown","job_progress","player_vehicles","bank_accounts","bank_history","cash_transfers","houses","staff","mutes","reports","moderation_audit"}
               missing=required-actual
               if missing:
                   raise SystemExit(f"Missing moderation tables: {sorted(missing)}")

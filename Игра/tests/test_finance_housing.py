@@ -15,6 +15,7 @@ for fragment in (
     "BEGIN IMMEDIATE TRANSACTION", "COMMIT", "ROLLBACK",
     "bank_accounts", "bank_history", "UPDATE accounts SET money",
     "BankUpdatedOneRow()", "BankAtATM(playerid)", "BANK_ACTION_LIMIT",
+    "CommitCashTransfer(sender, recipient, amount)", "cash_transfers",
 ):
     assert fragment in bank, f"Missing bank invariant: {fragment}"
 for fragment in (
@@ -39,6 +40,7 @@ with tempfile.TemporaryDirectory() as td:
             name TEXT PRIMARY KEY COLLATE NOCASE,
             balance INTEGER NOT NULL DEFAULT 0 CHECK(balance>=0 AND balance<=100000000))""")
         db.execute("CREATE TABLE bank_history(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT,action TEXT,amount INTEGER,created_at INTEGER)")
+        db.execute("CREATE TABLE cash_transfers(id INTEGER PRIMARY KEY AUTOINCREMENT,sender TEXT,receiver TEXT,amount INTEGER,created_at INTEGER)")
         db.execute("""CREATE TABLE houses(
             id INTEGER PRIMARY KEY, price INTEGER NOT NULL,
             owner TEXT UNIQUE COLLATE NOCASE, locked INTEGER NOT NULL DEFAULT 1,
@@ -101,7 +103,29 @@ with tempfile.TemporaryDirectory() as td:
         db.execute("COMMIT")
         assert db.execute("SELECT owner FROM houses WHERE id=1").fetchone()[0] is None
         assert db.execute("SELECT money FROM accounts WHERE name='User_1'").fetchone()[0]==22500
+        # Two-player transfers are all-or-nothing and logged.
+        db.execute("BEGIN IMMEDIATE TRANSACTION")
+        db.execute("UPDATE accounts SET money=21000 WHERE name='User_1' AND money=22500")
+        assert db.execute("SELECT changes()").fetchone()[0]==1
+        db.execute("UPDATE accounts SET money=11500 WHERE name='User_2' AND money=10000")
+        assert db.execute("SELECT changes()").fetchone()[0]==1
+        db.execute("INSERT INTO cash_transfers(sender,receiver,amount,created_at) VALUES('User_1','User_2',1500,2)")
+        db.execute("COMMIT")
+        assert db.execute("SELECT money FROM accounts WHERE name='User_1'").fetchone()[0]==21000
+        assert db.execute("SELECT money FROM accounts WHERE name='User_2'").fetchone()[0]==11500
+        assert db.execute("SELECT sender,receiver,amount FROM cash_transfers").fetchone()==("User_1","User_2",1500)
+
+        db.execute("BEGIN IMMEDIATE TRANSACTION")
+        db.execute("UPDATE accounts SET money=19000 WHERE name='User_1' AND money=21000")
+        assert db.execute("SELECT changes()").fetchone()[0]==1
+        db.execute("UPDATE accounts SET money=13500 WHERE name='User_2' AND money=99999")
+        assert db.execute("SELECT changes()").fetchone()[0]==0
+        db.execute("ROLLBACK")
+        assert db.execute("SELECT money FROM accounts WHERE name='User_1'").fetchone()[0]==21000
+        assert db.execute("SELECT money FROM accounts WHERE name='User_2'").fetchone()[0]==11500
+
 print("PASS: bank deposit and ledger committed atomically")
 print("PASS: negative balance rollback preserves cash")
 print("PASS: properties cannot be sold to two owners or duplicated")
 print("PASS: property purchase and sale update cash and title together")
+print("PASS: cash transfers update both players and ledger together")
