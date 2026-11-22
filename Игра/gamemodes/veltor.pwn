@@ -60,6 +60,7 @@ stock bool:DigitsOnly(const value[])
 #include "veltor_vehicles.inc"
 #include "veltor_bank.inc"
 #include "veltor_housing.inc"
+#include "veltor_inventory.inc"
 
 stock LoadWorkCooldown(playerid)
 {
@@ -260,6 +261,12 @@ public OnGameModeInit()
         return 0;
     }
     db_free_result(r);
+    if (!InitInventoryDB())
+    {
+        print("[VELTOR] Cannot initialize player inventory tables");
+        db_close(gDb);
+        return 0;
+    }
     if (!InitHousingDB())
     {
         print("[VELTOR] Cannot initialize house catalog");
@@ -515,11 +522,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
     if (HandleVehicleCommand(playerid, cmdtext)) return 1;
     if (HandleBankCommand(playerid, cmdtext)) return 1;
     if (HandleHousingCommand(playerid, cmdtext)) return 1;
+    if (HandleInventoryCommand(playerid, cmdtext)) return 1;
     if (!strcmp(cmdtext, "/help", true))
     {
         SendClientMessage(playerid, C_ORANGE, "VELTOR RP | Commands");
         SendClientMessage(playerid, C_WHITE, "/stats /jobs /job 1-3 /jobgps /work /workstatus /cancelwork");
-        SendClientMessage(playerid, C_WHITE, "/garage /car /park /bank /atm /deposit /withdraw /houses /home");
+        SendClientMessage(playerid, C_WHITE, "/garage /bank /houses /inventory /shop /buyitem /useitem");
         return 1;
     }
     if (!strcmp(cmdtext, "/stats", true))
