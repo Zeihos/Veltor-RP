@@ -385,7 +385,7 @@ stock HandleVehicleCommand(playerid, const cmdtext[])
     return 0;
 }
 
-stock OnPlayerVehicleStateChange(playerid, newstate)
+stock OnPlayerVehicleStateChange(playerid, PLAYER_STATE:newstate)
 {
     if (newstate != PLAYER_STATE_DRIVER && newstate != PLAYER_STATE_PASSENGER)
         return 1;
