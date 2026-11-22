@@ -46,6 +46,7 @@ new bool:gStaff[MAX_PLAYERS];
 new gMutedUntil[MAX_PLAYERS];
 new gLastReport[MAX_PLAYERS];
 new gLastChat[MAX_PLAYERS];
+new gLastItemGive[MAX_PLAYERS];
 new gPlayerName[MAX_PLAYERS][MAX_PLAYER_NAME + 1];
 
 stock bool:DigitsOnly(const value[])
@@ -150,6 +151,7 @@ stock InitPlayer(playerid)
     gMutedUntil[playerid] = 0;
     gLastReport[playerid] = 0;
     gLastChat[playerid] = 0;
+    gLastItemGive[playerid] = 0;
     GetPlayerName(playerid, gPlayerName[playerid], MAX_PLAYER_NAME + 1);
     return 1;
 }

@@ -34,6 +34,8 @@ stock bool:InitInventoryDB()
         return false;
     if (!InventoryExec("CREATE TABLE IF NOT EXISTS inventory_events (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, item_id INTEGER NOT NULL, action TEXT NOT NULL, quantity INTEGER NOT NULL, cash_delta INTEGER NOT NULL, created_at INTEGER NOT NULL)"))
         return false;
+    if (!InventoryExec("CREATE TABLE IF NOT EXISTS item_transfers (id INTEGER PRIMARY KEY AUTOINCREMENT, sender TEXT NOT NULL, receiver TEXT NOT NULL, item_id INTEGER NOT NULL CHECK(item_id IN (1,2)), quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 5), created_at INTEGER NOT NULL)"))
+        return false;
     return true;
 }
 
@@ -154,6 +156,153 @@ stock bool:InventoryUse(playerid, item)
     return false;
 }
 
+
+// Player-to-player gifts are performed atomically: remove from sender, add to
+// recipient, then record both events before COMMIT. Never trust the client count.
+#define ITEM_GIVE_RANGE 6.0
+#define ITEM_GIVE_LIMIT 5
+#define ITEM_GIVE_COOLDOWN 10
+
+stock bool:InventoryTransferNear(sender, recipient)
+{
+    if (sender == recipient || recipient < 0 || recipient >= MAX_PLAYERS ||
+        !IsPlayerConnected(recipient) || !gAuthed[recipient])
+        return false;
+    if (GetPlayerState(sender) != PLAYER_STATE_ONFOOT ||
+        GetPlayerState(recipient) != PLAYER_STATE_ONFOOT)
+        return false;
+    if (GetPlayerVirtualWorld(sender) != GetPlayerVirtualWorld(recipient) ||
+        GetPlayerInterior(sender) != GetPlayerInterior(recipient))
+        return false;
+    new Float:x, Float:y, Float:z;
+    GetPlayerPos(recipient, x, y, z);
+    return IsPlayerInRangeOfPoint(sender, ITEM_GIVE_RANGE, x, y, z);
+}
+
+stock bool:ParseItemTransfer(const cmdtext[], &recipient, &item, &quantity)
+{
+    // Exactly three numeric arguments: target ID, item ID, amount.
+    // Short fixed buffers also prevent integer overflow through strval().
+    new args[36], idText[8], itemText[8], qtyText[8];
+    if (strlen(cmdtext) <= 10 || strlen(cmdtext) >= 36) return false;
+    strmid(args, cmdtext, 10, strlen(cmdtext), sizeof args);
+    new first = strfind(args, " ");
+    if (first < 1) return false;
+    new second = strfind(args, " ", false, first + 1);
+    if (second <= first + 1) return false;
+    strmid(idText, args, 0, first, sizeof idText);
+    strmid(itemText, args, first + 1, second, sizeof itemText);
+    strmid(qtyText, args, second + 1, strlen(args), sizeof qtyText);
+    if (!DigitsOnly(idText) || strlen(idText) > 4 ||
+        !DigitsOnly(itemText) || strlen(itemText) > 1 ||
+        !DigitsOnly(qtyText) || strlen(qtyText) > 1)
+        return false;
+    recipient = strval(idText);
+    item = strval(itemText);
+    quantity = strval(qtyText);
+    return recipient >= 0 && recipient < MAX_PLAYERS &&
+        (item == ITEM_MEDKIT || item == ITEM_ARMOR) &&
+        quantity >= 1 && quantity <= ITEM_GIVE_LIMIT;
+}
+
+stock bool:InventoryTransfer(sender, recipient, item, quantity)
+{
+    if (!InventoryTransferNear(sender, recipient) ||
+        (item != ITEM_MEDKIT && item != ITEM_ARMOR) ||
+        quantity < 1 || quantity > ITEM_GIVE_LIMIT)
+        return false;
+
+    new owned = InventoryQuantity(sender, item);
+    new available = InventoryQuantity(recipient, item);
+    if (owned < quantity || available < 0 ||
+        available > ITEM_MAX_STACK - quantity)
+        return false;
+
+    if (!InventoryExec("BEGIN IMMEDIATE TRANSACTION")) return false;
+    new bool:ok = true, query[440];
+
+    format(query, sizeof query,
+        "UPDATE player_items SET quantity=%d WHERE name='%s' AND item_id=%d AND quantity=%d",
+        owned - quantity, gPlayerName[sender], item, owned);
+    if (!InventoryExec(query) || !InventoryChangedOne()) ok = false;
+
+    if (ok)
+    {
+        format(query, sizeof query,
+            "INSERT OR IGNORE INTO player_items(name,item_id,quantity) VALUES('%s',%d,0)",
+            gPlayerName[recipient], item);
+        if (!InventoryExec(query)) ok = false;
+    }
+
+    if (ok)
+    {
+        format(query, sizeof query,
+            "UPDATE player_items SET quantity=%d WHERE name='%s' AND item_id=%d AND quantity=%d",
+            available + quantity, gPlayerName[recipient], item, available);
+        if (!InventoryExec(query) || !InventoryChangedOne()) ok = false;
+    }
+
+    if (ok)
+    {
+        format(query, sizeof query,
+            "INSERT INTO item_transfers(sender,receiver,item_id,quantity,created_at) VALUES('%s','%s',%d,%d,%d)",
+            gPlayerName[sender], gPlayerName[recipient], item, quantity, gettime());
+        if (!InventoryExec(query)) ok = false;
+    }
+
+    if (ok)
+    {
+        format(query, sizeof query,
+            "INSERT INTO inventory_events(name,item_id,action,quantity,cash_delta,created_at) VALUES('%s',%d,'give',%d,0,%d)",
+            gPlayerName[sender], item, quantity, gettime());
+        if (!InventoryExec(query)) ok = false;
+    }
+
+    if (ok)
+    {
+        format(query, sizeof query,
+            "INSERT INTO inventory_events(name,item_id,action,quantity,cash_delta,created_at) VALUES('%s',%d,'receive',%d,0,%d)",
+            gPlayerName[recipient], item, quantity, gettime());
+        if (!InventoryExec(query)) ok = false;
+    }
+
+    if (ok && InventoryExec("COMMIT")) return true;
+    InventoryExec("ROLLBACK");
+    return false;
+}
+
+stock ShowInventoryHistory(playerid)
+{
+    new query[220];
+    format(query, sizeof query,
+        "SELECT action,item_id,quantity FROM inventory_events WHERE name='%s' ORDER BY id DESC LIMIT 5",
+        gPlayerName[playerid]);
+    new DBResult:r = db_query(gDb, query);
+    if (!r)
+    {
+        SendClientMessage(playerid, C_RED, "Inventory history unavailable.");
+        return 1;
+    }
+    new count = db_num_rows(r);
+    if (count == 0) SendClientMessage(playerid, C_WHITE, "No inventory activity yet.");
+    else
+    {
+        SendClientMessage(playerid, C_ORANGE, "Last 5 inventory operations:");
+        for (new i=0; i<count; i++)
+        {
+            new action[18], line[100];
+            db_get_field_assoc(r, "action", action, sizeof action);
+            format(line, sizeof line, "%s | item %d | amount %d",
+                action, db_get_field_assoc_int(r, "item_id"),
+                db_get_field_assoc_int(r, "quantity"));
+            SendClientMessage(playerid, C_WHITE, line);
+            db_next_row(r);
+        }
+    }
+    db_free_result(r);
+    return 1;
+}
+
 stock HandleInventoryCommand(playerid, const cmdtext[])
 {
     if (!strcmp(cmdtext, "/shop", true))
@@ -178,7 +327,50 @@ stock HandleInventoryCommand(playerid, const cmdtext[])
             "Inventory | First aid: %d/%d | Armor plates: %d/%d",
             kits, ITEM_MAX_STACK, armor, ITEM_MAX_STACK);
         SendClientMessage(playerid, C_GREEN, line);
-        SendClientMessage(playerid, C_WHITE, "/shop /buyitem ID /useitem ID");
+        SendClientMessage(playerid, C_WHITE, "/shop /buyitem ID /useitem ID /giveitem ID ITEM QTY");
+        SendClientMessage(playerid, C_WHITE, "/itemhistory shows your last 5 inventory actions.");
+        return 1;
+    }
+    if (!strcmp(cmdtext, "/itemhistory", true))
+        return ShowInventoryHistory(playerid);
+    if (!strcmp(cmdtext, "/giveitem", true))
+    {
+        SendClientMessage(playerid, C_WHITE, "Usage: /giveitem PLAYER_ID ITEM_ID QUANTITY (1-5)");
+        return 1;
+    }
+    if (!strcmp(cmdtext, "/giveitem ", true, 10))
+    {
+        new target, item, quantity;
+        if (!ParseItemTransfer(cmdtext, target, item, quantity))
+        {
+            SendClientMessage(playerid, C_RED, "Usage: /giveitem PLAYER_ID ITEM_ID QUANTITY (1-5)");
+            return 1;
+        }
+        if (!InventoryTransferNear(playerid, target))
+        {
+            SendClientMessage(playerid, C_RED, "Target must be online, near you and in the same world, on foot.");
+            return 1;
+        }
+        new now = gettime();
+        if (gLastItemGive[playerid] > 0 &&
+            now - gLastItemGive[playerid] < ITEM_GIVE_COOLDOWN)
+        {
+            SendClientMessage(playerid, C_RED, "Wait before transferring another item.");
+            return 1;
+        }
+        if (!InventoryTransfer(playerid, target, item, quantity))
+        {
+            SendClientMessage(playerid, C_RED, "Transfer failed. Check quantities, recipient capacity and database.");
+            return 1;
+        }
+        gLastItemGive[playerid] = now;
+        new line[144];
+        format(line, sizeof line, "Sent item %d x%d to %s.",
+            item, quantity, gPlayerName[target]);
+        SendClientMessage(playerid, C_GREEN, line);
+        format(line, sizeof line, "Received item %d x%d from %s.",
+            item, quantity, gPlayerName[playerid]);
+        SendClientMessage(target, C_GREEN, line);
         return 1;
     }
     if (!strcmp(cmdtext, "/buyitem", true) || !strcmp(cmdtext, "/useitem", true))
